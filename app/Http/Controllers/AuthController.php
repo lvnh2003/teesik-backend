@@ -26,8 +26,13 @@ class AuthController extends Controller
         $token = $user->createToken('authToken')->accessToken;
 
         return response()->json([
-            'user'  => $user,
-            'token' => $token,
+            'success' => true,
+            'data' => [
+                'user' => $user,
+                'token' => $token,
+                'token_type' => 'Bearer'
+            ],
+            'message' => 'Registration successful'
         ]);
     }
 
@@ -47,8 +52,14 @@ class AuthController extends Controller
         $token = $user->createToken('authToken')->accessToken;
 
         return response()->json([
-            'user'  => $user,
-            'token' => $token,
+            'success' => true,
+            'data' => [
+                'user' => $user,
+                'token' => $token,
+                'token_type' => 'Bearer'
+            ],
+            'message' => 'Login successful'
         ]);
+        
     }
 }
