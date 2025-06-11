@@ -21,5 +21,10 @@ Route::post('/login',    [AuthController::class, 'login']);
 
 // Route bảo vệ bằng token
 Route::middleware('auth:api')->get('/me', function (Request $request) {
-    return $request->user();
+    return response()->json([
+        'success' => true,
+        'data' => [
+            'user' => $request->user(),
+        ],
+    ]);
 });
