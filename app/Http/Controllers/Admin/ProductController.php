@@ -13,33 +13,12 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
-
+use App\Http\Requests\StoreOrUpdateProductRequest;
 class ProductController extends Controller
 {
     
-    public function store(Request $request)
+    public function store(StoreOrUpdateProductRequest $request)
     {
-        $request->validate([
-            'name' => 'required|string|max:255',
-            'description' => 'required|string',
-            'category_id' => 'required|exists:categories,id',
-            'price' => 'required|numeric|min:0',
-            'stock_quantity' => 'required|integer|min:0',
-            'sku' => 'required_without:variants|string|unique:product_variants,sku',
-            
-            // Variants validation - cho phép null hoặc array
-            'variants' => 'nullable|array',
-            'variants.*.sku' => 'required_with:variants|string|unique:product_variants,sku',
-            'variants.*.price' => 'required_with:variants|numeric|min:0',
-            'variants.*.original_price' => 'nullable|numeric|min:0',
-            'variants.*.stock_quantity' => 'required_with:variants|integer|min:0',
-            'variants.*.attributes' => 'required_with:variants|array',
-            
-            // Images validation
-            'images' => 'nullable|array',
-            'images.*' => 'image|mimes:jpeg,png,jpg,gif|max:5120'
-        ]);
-    
         DB::transaction(function () use ($request) {
             // Create product
             $product = Product::create([
@@ -51,10 +30,7 @@ class ProductController extends Controller
                 'slug' => Str::slug($request->name)
 
             ]);
-    
-            // Handle general images
-            $this->handleGeneralImages($request, $product);
-    
+        
             // Handle variants
             $variants = $request->get('variants');
 
@@ -67,30 +43,10 @@ class ProductController extends Controller
             if (!empty($variants) && is_array($variants)) {
                 
                 $this->createVariants($variants, $product);
-            } else {
-                // Create single variant if no variants specified
-                $this->createSingleVariant($request, $product);
             }
         });
     
         return response()->json(['message' => 'Product created successfully']);
-    }
-    
-    private function handleGeneralImages($request, $product)
-    {
-        if ($request->hasFile('images')) {
-            foreach ($request->file('images') as $index => $image) {
-                $path = $image->store('products', 'public');
-                
-                ProductImage::create([
-                    'product_id' => $product->id,
-                    'image_path' => $path,
-                    'alt_text' => $product->name,
-                    'sort_order' => $index,
-                    'type' => 'general'
-                ]);
-            }
-        }
     }
     
     private function createVariants($variants, $product)
@@ -104,7 +60,6 @@ class ProductController extends Controller
                 'stock_quantity' => $variantData['stock_quantity'],
                 'attributes' => $variantData['attributes']
             ]);
-            \Log::info(["Variant",$variant]);
             // Handle variant image if exists
             if (isset($variantData['image']) && $variantData['image'] instanceof \Illuminate\Http\UploadedFile) {
                 $path = $variantData['image']->store('products/variants', 'public');
@@ -126,17 +81,6 @@ class ProductController extends Controller
         }
     }
     
-    private function createSingleVariant($request, $product)
-    {
-        ProductVariant::create([
-            'product_id' => $product->id,
-            'sku' => $request->sku,
-            'price' => $request->price,
-            'original_price' => $request->original_price,
-            'stock_quantity' => $request->stock_quantity,
-            'attributes' => []
-        ]);
-    }
 
     public function destroy(Product $product)
     {
@@ -389,22 +333,45 @@ class ProductController extends Controller
                 },
                 'variants' => function($query) {
                     $query->with([
-                        'attributes',
                         'images' => function($q) {
                             $q->orderBy('sort_order', 'asc');
-                        }
+                        }   
                     ]);
                 }
             ])->findOrFail($id);
-
-            // Thêm thông tin bổ sung
+            $product->price =   $product->variants[0]->price;
+            $product->original_price =   $product->variants[0]->original_price;
+                // Tính phần trăm giảm giá nếu có
             $product->discount_percentage = null;
-            if ($product->original_price && $product->original_price > $product->price) {
-                $product->discount_percentage = round((($product->original_price - $product->price) / $product->original_price) * 100);
+            if ($product->variants[0]->original_price && $product->variants[0]->original_price >$product->variants[0]->price) {
+                $product->discount_percentage = round(
+                    (($product->variants[0]->original_price - $product->variants[0]->price) / $product->variants[0]->original_price) * 100
+                );
             }
 
+            // Đếm số lượng variants và images
             $product->variants_count = $product->variants->count();
             $product->images_count = $product->images->count();
+
+            // Gom tất cả attributes từ các variants (nếu lưu kiểu JSON)
+            $allAttributes = [];
+            foreach ($product->variants as $variant) {
+                if (is_array($variant->attributes)) {
+                    foreach ($variant->attributes as $attr) {
+                        $allAttributes[] = $attr;
+                    }
+                }
+            }
+
+            $groupedAttributes = collect($allAttributes)
+                ->groupBy('name')
+                ->map(function ($items) {
+                    return $items->pluck('value')->unique()->values();
+                })
+                ->toArray();
+
+            // Gán vào product
+            $product->attributes = $groupedAttributes;
 
             return response()->json([
                 'success' => true,
@@ -418,6 +385,81 @@ class ProductController extends Controller
                 'error' => $e->getMessage()
             ], 404);
         }
+    }
+
+    public function update(StoreOrUpdateProductRequest $request, Product $product)
+    {
+        DB::transaction(function () use ($request, $product) {
+            // Cập nhật sản phẩm chính
+            $product->update([
+                'name' => $request->name,
+                'description' => $request->description,
+                'category_id' => $request->category_id,
+                'is_new' => $request->boolean('is_new'),
+                'is_featured' => $request->boolean('is_featured'),
+                'slug' => Str::slug($request->name),
+            ]);
+            \Log::info(["Testtt",$request->all()]);
+
+
+            // Cập nhật biến thể
+            $variants = $request->variants ?? [];
+
+            foreach ($variants as $index => $variantData) {
+                $variant = null;
+
+                if (!empty($variantData['id'])) {
+                    $variant = ProductVariant::find($variantData['id']);
+                    if ($variant && $variant->product_id !== $product->id) {
+                        throw new \Exception("Biến thể không thuộc sản phẩm này.");
+                    }
+                }
+
+
+                $variantPayload = [
+                    'product_id' => $product->id,
+                    'sku' => $variantData['sku'],
+                    'price' => $variantData['price'],
+                    'original_price' => $variantData['original_price'] ?? null,
+                    'stock_quantity' => $variantData['stock_quantity'],
+                    'attributes' =>  $variantData['attributes'],
+                ];
+
+                // Xử lý ảnh
+                if ($request->hasFile("variants.$index.image")) {
+                    $imageFile = $request->file("variants.$index.image");
+                
+                    // Xóa ảnh cũ (nếu có)
+                    if ($variant->images()->exists()) {
+                        // Xoá file trong storage nếu cần
+                        foreach ($variant->images as $image) {
+                            \Storage::disk('public')->delete($image->image_path);
+                            $image->delete();
+                        }
+                    }
+                
+                    // Lưu ảnh mới
+                    $path = $imageFile->store('products/variants', 'public');
+                
+                    $variant->images()->create([
+                        'product_id' => $variant->product_id,
+                        'image_path' => $path,
+                        'alt_text' => $variant->product->name,
+                        'sort_order' => 0,
+                        'type' => 'variant',
+                    ]);
+                }
+                if ($variant) {
+                    $variant->update($variantPayload);
+                } else {
+                    ProductVariant::create($variantPayload);
+                }
+            }
+        });
+        return response()->json([
+            'success' => true
+        ]);
+        // return response()->json(['message' => 'Product updated successfully']);
     }
 
 
