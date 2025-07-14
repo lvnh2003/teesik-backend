@@ -13,6 +13,7 @@ class ProductVariant extends Model
         'original_price',
         'stock_quantity',
         'attributes',
+        'isDelete'
     ];
 
     protected $casts = [

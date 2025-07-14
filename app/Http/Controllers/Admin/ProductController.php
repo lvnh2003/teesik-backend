@@ -399,12 +399,10 @@ class ProductController extends Controller
                 'is_featured' => $request->boolean('is_featured'),
                 'slug' => Str::slug($request->name),
             ]);
-            \Log::info(["Testtt",$request->all()]);
 
 
             // Cập nhật biến thể
             $variants = $request->variants ?? [];
-
             foreach ($variants as $index => $variantData) {
                 $variant = null;
 
@@ -415,6 +413,20 @@ class ProductController extends Controller
                     }
                 }
 
+                if (
+                    isset($variantData['isDelete']) &&
+                    ($variantData['isDelete'] === true || $variantData['isDelete'] === 'true')
+                ) {
+                    // Xóa ảnh liên quan (và file)
+                    if ($variant->images()->exists()) {
+                        foreach ($variant->images as $image) {
+                            \Storage::disk('public')->delete($image->image_path);
+                            $image->delete();
+                        }
+                    }
+                    $variant->delete();
+                    continue; 
+                }
 
                 $variantPayload = [
                     'product_id' => $product->id,

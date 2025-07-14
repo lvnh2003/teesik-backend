@@ -20,7 +20,23 @@ class StoreOrUpdateProductRequest extends FormRequest
             'sku' => 'required_without:variants|string|unique:product_variants,sku',
 
             'variants' => 'nullable|array',
-            'variants.*.sku' => 'required_with:variants|string|unique:product_variants,sku',
+            'variants.*.sku' => [
+                'required_with:variants',
+                'string',
+                function ($attribute, $value, $fail) {
+                    $index = explode('.', $attribute)[1];
+                    $variantId = $this->input("variants.$index.id");
+
+                    $exists = \DB::table('product_variants')
+                        ->where('sku', $value)
+                        ->when($variantId, fn($q) => $q->where('id', '!=', $variantId))
+                        ->exists();
+
+                    if ($exists) {
+                        $fail("SKU của biến thể đã tồn tại.");
+                    }
+                },
+            ],
             'variants.*.price' => 'required_with:variants|numeric|min:0',
             'variants.*.original_price' => 'nullable|numeric|min:0',
             'variants.*.stock_quantity' => 'required_with:variants|integer|min:0',
