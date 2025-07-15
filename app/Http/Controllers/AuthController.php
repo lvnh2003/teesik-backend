@@ -14,13 +14,15 @@ class AuthController extends Controller
         $request->validate([
             'name'     => 'required|string|max:255',
             'email'    => 'required|string|email|unique:users',
-            'password' => 'required|string|min:6|confirmed', // phải có password_confirmation
+            'password' => 'required|string|min:6|confirmed',
+            'role'     => 'required|string'
         ]);
 
         $user = User::create([
             'name'     => $request->name,
             'email'    => $request->email,
             'password' => Hash::make($request->password),
+            'role'     => $request->role
         ]);
 
         $token = $user->createToken('authToken')->accessToken;

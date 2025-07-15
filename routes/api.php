@@ -15,7 +15,8 @@ use Illuminate\Support\Facades\Route;
 */
 
 use App\Http\Controllers\AuthController;
-
+use App\Http\Controllers\Admin\ProductController;
+use App\Http\Controllers\Admin\CategoryController;
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login',    [AuthController::class, 'login']);
 
@@ -27,4 +28,9 @@ Route::middleware('auth:api')->get('/me', function (Request $request) {
             'user' => $request->user(),
         ],
     ]);
+});
+
+Route::middleware('auth:api')->prefix('admin')->group(function () {
+    Route::apiResource('products', ProductController::class);
+    Route::apiResource('categories', CategoryController::class);
 });
