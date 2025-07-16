@@ -17,8 +17,6 @@ class StoreOrUpdateProductRequest extends FormRequest
             'name' => 'required|string|max:255',
             'description' => 'required|string',
             'category_id' => 'required|exists:categories,id',
-            'sku' => 'required_without:variants|string|unique:product_variants,sku',
-
             'variants' => 'nullable|array',
             'variants.*.sku' => [
                 'required_with:variants',
