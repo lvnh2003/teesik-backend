@@ -17,6 +17,7 @@ class StoreOrUpdateProductRequest extends FormRequest
             'name' => 'required|string|max:255',
             'description' => 'required|string',
             'category_id' => 'required|exists:categories,id',
+
             'variants' => 'nullable|array',
             'variants.*.sku' => [
                 'required_with:variants',
@@ -41,7 +42,7 @@ class StoreOrUpdateProductRequest extends FormRequest
             'variants.*.attributes' => 'required_with:variants|array',
 
             'images' => 'nullable|array',
-            'images.*' => 'image|mimes:jpeg,png,jpg,gif|max:5120'
+            'images.*' => 'image|mimes:jpeg,png,jpg,gif|max:5120',
         ];
     }
 
@@ -52,8 +53,6 @@ class StoreOrUpdateProductRequest extends FormRequest
             'description.required' => 'Mô tả sản phẩm là bắt buộc.',
             'category_id.required' => 'Danh mục là bắt buộc.',
             'category_id.exists' => 'Danh mục không hợp lệ.',
-            'sku.required_without' => 'SKU là bắt buộc nếu không có biến thể.',
-            'sku.unique' => 'SKU đã tồn tại.',
 
             'variants.*.sku.required_with' => 'Mỗi biến thể phải có SKU.',
             'variants.*.sku.unique' => 'SKU của biến thể đã tồn tại.',
@@ -65,7 +64,7 @@ class StoreOrUpdateProductRequest extends FormRequest
 
             'images.*.image' => 'Tệp tải lên phải là ảnh.',
             'images.*.mimes' => 'Ảnh phải có định dạng jpeg, png, jpg hoặc gif.',
-            'images.*.max' => 'Ảnh không được vượt quá 5MB.'
+            'images.*.max' => 'Ảnh không được vượt quá 5MB.',
         ];
     }
 }
