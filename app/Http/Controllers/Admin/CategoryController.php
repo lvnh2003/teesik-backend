@@ -27,7 +27,7 @@ class CategoryController extends Controller
 
         $category = Category::create($validated);
 
-        return response()->json($category, 201);
+        return response()->json(['data' => $category], 201);
     }
 
     public function show($id)
@@ -47,7 +47,7 @@ class CategoryController extends Controller
 
         $category->update($validated);
 
-        return response()->json($category);
+        return response()->json(['data' => $category]);
     }
 
     public function destroy($id)
@@ -55,6 +55,8 @@ class CategoryController extends Controller
         $category = Category::findOrFail($id);
         $category->delete();
 
-        return response()->json(['message' => 'Deleted successfully.']);
+        return response()->json([
+            'success' => true
+        ]);
     }
 }

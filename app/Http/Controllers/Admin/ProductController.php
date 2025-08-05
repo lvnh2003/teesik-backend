@@ -195,13 +195,8 @@ class ProductController extends Controller
                     
                     $product->min_price = $prices->min();
                     $product->max_price = $prices->max();
-                    $product->price = $product->min_price; // Giá hiển thị chính
+                    $product->price = $product->min_price; 
                     
-                    if ($originalPrices->count() > 0) {
-                        $product->min_original_price = $originalPrices->min();
-                        $product->max_original_price = $originalPrices->max();
-                        $product->original_price = $product->min_original_price;
-                    }
                     
                     // Tính tổng stock từ tất cả variants
                     $product->total_stock = $product->variants->sum('stock_quantity');
@@ -222,11 +217,6 @@ class ProductController extends Controller
                     $product->all_skus = [];
                 }
 
-                // Tính discount percentage
-                $product->discount_percentage = null;
-                if ($product->original_price && $product->original_price > $product->price) {
-                    $product->discount_percentage = round((($product->original_price - $product->price) / $product->original_price) * 100);
-                }
 
                 // Đếm số lượng variants
                 $product->variants_count = $product->variants ? $product->variants->count() : 0;
@@ -237,17 +227,6 @@ class ProductController extends Controller
                     $product->stock_status = 'out_of_stock';
                 } elseif ($product->total_stock < 10) {
                     $product->stock_status = 'low_stock';
-                }
-
-                // Format giá tiền
-                if ($product->min_price == $product->max_price) {
-                    $product->formatted_price = number_format($product->price, 0, ',', '.') . ' ₫';
-                } else {
-                    $product->formatted_price = number_format($product->min_price, 0, ',', '.') . ' - ' . number_format($product->max_price, 0, ',', '.') . ' ₫';
-                }
-
-                if ($product->original_price) {
-                    $product->formatted_original_price = number_format($product->original_price, 0, ',', '.') . ' ₫';
                 }
 
                 // Thông tin ảnh
@@ -471,7 +450,6 @@ class ProductController extends Controller
         return response()->json([
             'success' => true
         ]);
-        // return response()->json(['message' => 'Product updated successfully']);
     }
 
 
