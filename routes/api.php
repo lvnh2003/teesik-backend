@@ -15,8 +15,10 @@ use Illuminate\Support\Facades\Route;
 */
 
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\CartController;
 use App\Http\Controllers\Admin\ProductController;
 use App\Http\Controllers\Admin\CategoryController;
+
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login',    [AuthController::class, 'login']);
 
@@ -30,7 +32,15 @@ Route::middleware('auth:api')->get('/me', function (Request $request) {
     ]);
 });
 
-Route::middleware('auth:api')->prefix('admin')->group(function () {
+Route::prefix('admin')->group(function () {
     Route::apiResource('products', ProductController::class);
     Route::apiResource('categories', CategoryController::class);
 });
+
+// Cart routes
+Route::get('/cart/{user}', [CartController::class, 'index']);
+Route::post('/cart', [CartController::class, 'store']);
+Route::put('/cart/{id}', [CartController::class, 'update']);
+Route::delete('/cart/{id}', [CartController::class, 'destroy']);
+Route::delete('/cart/clear', [CartController::class, 'clear']);
+Route::post('/cart/sync', [CartController::class, 'sync']);

@@ -110,8 +110,12 @@ class ProductController extends Controller
                             $selectFields[] = $col;
                         }
                     }
-                    $query->select($selectFields);
-                 
+                    $query->select($selectFields)
+                          ->with(['images' => function($q) {
+                              if (\Schema::hasColumn('product_images', 'sort_order')) {
+                                  $q->orderBy('sort_order', 'asc');
+                              }
+                          }]);
                 }
             ]);
 

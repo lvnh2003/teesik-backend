@@ -32,4 +32,9 @@ class ProductVariant extends Model
     {
         return $this->hasMany(ProductImage::class, 'product_variant_id');
     }
+
+    public function image()
+    {
+        return $this->hasOne(ProductImage::class, 'product_variant_id');
+    }
 }
