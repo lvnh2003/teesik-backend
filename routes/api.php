@@ -17,8 +17,15 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\Admin\ProductController;
 use App\Http\Controllers\Admin\CategoryController;
+use App\Http\Controllers\Admin\CustomerController;
+use App\Http\Controllers\Admin\TransactionController;
+use App\Http\Controllers\Admin\PurchaseController;
+use App\Http\Controllers\Admin\PromotionController;
+use App\Http\Controllers\Admin\VoucherController;
+use App\Http\Controllers\Admin\ComboController;
+use App\Http\Controllers\Admin\StatisticController;
 Route::post('/register', [AuthController::class, 'register']);
-Route::post('/login',    [AuthController::class, 'login']);
+Route::post('/login', [AuthController::class, 'login']);
 
 // Route bảo vệ bằng token
 Route::middleware('auth:api')->get('/me', function (Request $request) {
@@ -30,7 +37,40 @@ Route::middleware('auth:api')->get('/me', function (Request $request) {
     ]);
 });
 
-Route::middleware('auth:api')->prefix('admin')->group(function () {
+// Cart & Checkout
+use App\Http\Controllers\CartController;
+use App\Http\Controllers\OrderController;
+use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\Admin\OrderController as AdminOrderController;
+
+Route::get('/cart', [CartController::class, 'index']);
+Route::post('/cart/add', [CartController::class, 'add']);
+Route::post('/cart/update', [CartController::class, 'update']);
+Route::post('/cart/remove', [CartController::class, 'remove']);
+Route::post('/checkout', [OrderController::class, 'checkout']);
+Route::post('/payment/process', [PaymentController::class, 'process']);
+
+use App\Http\Controllers\ProductController as PublicProductController;
+Route::get('/products', [PublicProductController::class, 'index']);
+Route::get('/products/{id}', [PublicProductController::class, 'show']);
+
+Route::prefix('admin')->group(function () {
     Route::apiResource('products', ProductController::class);
     Route::apiResource('categories', CategoryController::class);
+    Route::apiResource('orders', AdminOrderController::class);
+
+    // Warehouse Routes
+    Route::get('warehouses', [\App\Http\Controllers\Admin\WarehouseController::class, 'index']);
+    Route::get('inventory-history', [\App\Http\Controllers\Admin\WarehouseController::class, 'history']);
+
+    // New Pancake API Routes
+    Route::apiResource('customers', CustomerController::class);
+    Route::apiResource('transactions', TransactionController::class)->only(['index', 'store']);
+    Route::apiResource('purchases', PurchaseController::class)->only(['index', 'store', 'update']);
+    Route::apiResource('promotions', PromotionController::class)->only(['index', 'store', 'update', 'destroy']);
+    Route::apiResource('vouchers', VoucherController::class)->only(['index', 'store']);
+    Route::apiResource('combos', ComboController::class)->only(['index', 'store', 'update', 'destroy']);
+
+    Route::get('statistics/sales', [StatisticController::class, 'sales']);
+    Route::get('statistics/inventory', [StatisticController::class, 'inventory']);
 });

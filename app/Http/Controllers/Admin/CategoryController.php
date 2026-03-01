@@ -3,60 +3,67 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\Category;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
+use App\Services\PancakeService;
 
 class CategoryController extends Controller
 {
+    protected $pancakeService;
+
+    public function __construct(PancakeService $pancakeService)
+    {
+        $this->pancakeService = $pancakeService;
+    }
+
     public function index()
     {
-        $categories = Category::all();
-        return response()->json(['data' => $categories]);
+        try {
+            $categories = $this->pancakeService->getCategories();
+            return response()->json(['data' => $categories]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error loading categories: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
     public function store(Request $request)
     {
-        $validated = $request->validate([
+        $request->validate([
             'name' => 'required|string|max:255',
-            'slug' => 'nullable|string|unique:categories,slug',
-            'description' => 'nullable|string',
         ]);
 
-        $validated['slug'] = $validated['slug'] ?? Str::slug($validated['name']);
+        try {
+            $category = $this->pancakeService->createCategory($request->name);
 
-        $category = Category::create($validated);
+            return response()->json([
+                'success' => true,
+                'data' => $category,
+                'message' => 'Category created successfully on Pancake'
+            ], 201);
 
-        return response()->json(['data' => $category], 201);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error creating category: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
     public function show($id)
     {
-        return Category::findOrFail($id);
+        // Implement if needed via API, currently just list is main requirement
+        return response()->json(['message' => 'Not implemented'], 501);
     }
 
     public function update(Request $request, $id)
     {
-        $category = Category::findOrFail($id);
-
-        $validated = $request->validate([
-            'name' => 'sometimes|string|max:255',
-            'slug' => "sometimes|string|unique:categories,slug,{$id}",
-            'description' => 'nullable|string',
-        ]);
-
-        $category->update($validated);
-
-        return response()->json(['data' => $category]);
+        return response()->json(['message' => 'Update category via Pancake POS'], 501);
     }
 
     public function destroy($id)
     {
-        $category = Category::findOrFail($id);
-        $category->delete();
-
-        return response()->json([
-            'success' => true
-        ]);
+        return response()->json(['message' => 'Delete category via Pancake POS'], 501);
     }
 }

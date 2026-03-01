@@ -2,11 +2,12 @@
 
 namespace App\Http\Controllers\Admin;
 
+
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Services\PancakeService;
 
-class ProductController extends Controller
+class OrderController extends Controller
 {
     protected $pancakeService;
 
@@ -21,11 +22,9 @@ class ProductController extends Controller
             $page = $request->get('page', 1);
             $limit = $request->get('limit', 15);
             $search = $request->get('search');
-            $categoryId = $request->get('category_id'); // If supported in future
+            $status = $request->get('status');
 
-            // Note: status filter not fully implemented in service yet, but can be passed if needed
-
-            $paginator = $this->pancakeService->getProducts($page, $limit, $search, $categoryId);
+            $paginator = $this->pancakeService->getOrders($page, $limit, $search, $status);
 
             return response()->json([
                 'success' => true,
@@ -37,11 +36,10 @@ class ProductController extends Controller
                     'total' => $paginator->total(),
                 ]
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Error loading products from Pancake: ' . $e->getMessage()
+                'message' => $e->getMessage()
             ], 500);
         }
     }
@@ -49,37 +47,42 @@ class ProductController extends Controller
     public function show($id)
     {
         try {
-            $product = $this->pancakeService->getProduct($id);
+            $order = $this->pancakeService->getOrder($id);
 
             return response()->json([
                 'success' => true,
-                'data' => $product
+                'data' => $order
             ]);
-
         } catch (\Exception $e) {
-            return response()->json(['message' => 'Error fetching product', 'error' => $e->getMessage()], 500);
+            return response()->json([
+                'success' => false,
+                'message' => 'Order not found or API error: ' . $e->getMessage()
+            ], 404);
         }
     }
 
     public function store(Request $request)
     {
         $request->validate([
-            'name' => 'required|string|max:255',
+            'customer_name' => 'required|string',
+            'customer_phone' => 'required|string',
+            'items' => 'required|array',
+            'items.*.variation_id' => 'required',
+            'items.*.quantity' => 'required|integer|min:1',
         ]);
 
         try {
-            $product = $this->pancakeService->createProduct($request->all());
+            $order = $this->pancakeService->createOrder($request->all());
 
             return response()->json([
                 'success' => true,
-                'data' => $product,
-                'message' => 'Product created successfully on Pancake'
+                'data' => $order,
+                'message' => 'Order created successfully on Pancake'
             ], 201);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Error creating product: ' . $e->getMessage()
+                'message' => 'Error creating order: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -87,29 +90,18 @@ class ProductController extends Controller
     public function update(Request $request, $id)
     {
         try {
-            $product = $this->pancakeService->updateProduct($id, $request->all());
+            $order = $this->pancakeService->updateOrder($id, $request->all());
 
             return response()->json([
                 'success' => true,
-                'data' => $product,
-                'message' => 'Product updated successfully on Pancake'
+                'data' => $order,
+                'message' => 'Order updated successfully on Pancake'
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Error updating product: ' . $e->getMessage()
+                'message' => 'Error updating order: ' . $e->getMessage()
             ], 500);
         }
-    }
-
-    public function destroy($id)
-    {
-        // Deletion might not be supported via simple API call or might require different permissions.
-        // Keeping as 501 for now unless "Delete Product" API is confirmed.
-        return response()->json([
-            'success' => false,
-            'message' => 'Product deletion should be done via Pancake POS.'
-        ], 501);
     }
 }
