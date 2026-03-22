@@ -39,14 +39,4 @@ class VoucherController extends Controller
         }
     }
 
-    public function store(Request $request)
-    {
-        try {
-            $voucher = $this->pancakeService->createVoucher($request->all());
-            return response()->json(['success' => true, 'data' => $voucher], 201);
-        } catch (\Exception $e) {
-            \Log::error('Error creating voucher: ' . $e->getMessage());
-            return response()->json(['success' => false, 'message' => 'Failed to create voucher'], 500);
-        }
-    }
 }

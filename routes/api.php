@@ -55,6 +55,7 @@ Route::get('/products', [PublicProductController::class, 'index']);
 Route::get('/products/{id}', [PublicProductController::class, 'show']);
 
 Route::prefix('admin')->group(function () {
+    Route::apiResource('users', \App\Http\Controllers\Admin\UserController::class);
     Route::apiResource('products', ProductController::class);
     Route::apiResource('categories', CategoryController::class);
     Route::apiResource('orders', AdminOrderController::class);
@@ -67,9 +68,9 @@ Route::prefix('admin')->group(function () {
     Route::apiResource('customers', CustomerController::class);
     Route::apiResource('transactions', TransactionController::class)->only(['index', 'store']);
     Route::apiResource('purchases', PurchaseController::class)->only(['index', 'store', 'update']);
-    Route::apiResource('promotions', PromotionController::class)->only(['index', 'store', 'update', 'destroy']);
-    Route::apiResource('vouchers', VoucherController::class)->only(['index', 'store']);
-    Route::apiResource('combos', ComboController::class)->only(['index', 'store', 'update', 'destroy']);
+    Route::apiResource('promotions', PromotionController::class)->only(['index']);
+    Route::apiResource('vouchers', VoucherController::class)->only(['index']);
+    Route::apiResource('combos', ComboController::class)->only(['index']);
 
     Route::get('statistics/sales', [StatisticController::class, 'sales']);
     Route::get('statistics/inventory', [StatisticController::class, 'inventory']);

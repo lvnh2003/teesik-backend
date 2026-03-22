@@ -39,36 +39,4 @@ class PromotionController extends Controller
         }
     }
 
-    public function store(Request $request)
-    {
-        try {
-            $promotion = $this->pancakeService->createPromotion($request->all());
-            return response()->json(['success' => true, 'data' => $promotion], 201);
-        } catch (\Exception $e) {
-            \Log::error('Error creating promotion: ' . $e->getMessage());
-            return response()->json(['success' => false, 'message' => 'Failed to create promotion'], 500);
-        }
-    }
-
-    public function update(Request $request, $id)
-    {
-        try {
-            $promotion = $this->pancakeService->updatePromotion($id, $request->all());
-            return response()->json(['success' => true, 'data' => $promotion]);
-        } catch (\Exception $e) {
-            \Log::error('Error updating promotion: ' . $e->getMessage());
-            return response()->json(['success' => false, 'message' => 'Failed to update promotion'], 500);
-        }
-    }
-
-    public function destroy($id)
-    {
-        try {
-            $this->pancakeService->deletePromotion($id);
-            return response()->json(['success' => true, 'message' => 'Promotion deleted successfully']);
-        } catch (\Exception $e) {
-            \Log::error('Error deleting promotion: ' . $e->getMessage());
-            return response()->json(['success' => false, 'message' => 'Failed to delete promotion'], 500);
-        }
-    }
 }

@@ -827,77 +827,7 @@ class PancakeService
         return new LengthAwarePaginator($items, $data['total_entries'] ?? 0, $limit, $page);
     }
 
-    public function createPromotion($data)
-    {
-        $startTime = isset($data['start_date']) && !empty($data['start_date']) ? strtotime($data['start_date']) : 1;
-        $endTime = isset($data['end_date']) && !empty($data['end_date']) ? strtotime($data['end_date']) : 1;
 
-        $payload = [
-            'promotion_advance' => [
-                'name' => $data['name'] ?? 'New Promotion',
-                'type' => 'discount',
-                'start_time' => $startTime,
-                'end_time' => $endTime,
-                'is_activated' => ($data['status'] ?? 'active') === 'active',
-                'promo_code_info' => [
-                    'discount' => 0,
-                    'is_percent' => false,
-                ],
-                'items' => []
-            ]
-        ];
-
-        $response = Http::post("{$this->baseUrl}/shops/{$this->shopId}/promotion_advance?api_key={$this->apiKey}", $payload);
-        if ($response->failed())
-            throw new \Exception('Failed to create promotion: ' . $response->body());
-        return $response->json()['data'] ?? $response->json();
-    }
-
-    public function updatePromotion($id, $data)
-    {
-        $startTime = isset($data['start_date']) && !empty($data['start_date']) ? strtotime($data['start_date']) : 1;
-        $endTime = isset($data['end_date']) && !empty($data['end_date']) ? strtotime($data['end_date']) : 1;
-
-        $data['start_time'] = $startTime;
-        $data['end_time'] = $endTime;
-        $data['is_activated'] = ($data['status'] ?? 'active') === 'active';
-
-        // Clean up arrays that Pancake returns as [{}] but rejects on PUT
-        $arrayFieldsToSanitize = ['arr_level_promotion', 'bonus_items', 'order_sources', 'level_order_prices'];
-        foreach ($arrayFieldsToSanitize as $field) {
-            if (isset($data[$field]) && is_array($data[$field])) {
-                // If it's an array of empty objects or nulls, reset to empty array
-                $isEmptyArray = count($data[$field]) > 0 && empty((array) $data[$field][0]);
-                if ($isEmptyArray || count($data[$field]) === 0) {
-                    $data[$field] = [];
-                }
-            }
-        }
-
-        unset($data['start_date']);
-        unset($data['end_date']);
-        unset($data['status']);
-
-        $payload = ['promotion_advance' => $data];
-
-        $response = Http::put("{$this->baseUrl}/shops/{$this->shopId}/promotion_advance/{$id}?api_key={$this->apiKey}", $payload);
-        if ($response->failed())
-            throw new \Exception('Failed to update promotion: ' . $response->body());
-        return $response->json()['data'] ?? $response->json();
-    }
-
-    public function deletePromotion($id)
-    {
-        $payload = [
-            'ids' => [$id],
-            'type_action' => 'DEACTIVE_PROMOTIONS'
-        ];
-
-        $response = Http::post("{$this->baseUrl}/shops/{$this->shopId}/promotion_advance/delete_multi?api_key={$this->apiKey}", $payload);
-        if ($response->failed())
-            throw new \Exception('Failed to delete promotion: ' . $response->body());
-        return true;
-    }
 
     // ==========================================
     // VOUCHERS API
@@ -917,36 +847,7 @@ class PancakeService
         return new LengthAwarePaginator($items, $data['total_entries'] ?? 0, $limit, $page);
     }
 
-    public function createVoucher($data)
-    {
-        $discountAmount = isset($data['discount_amount']) && is_numeric($data['discount_amount']) ? (int) $data['discount_amount'] : 0;
 
-        $startTime = isset($data['start_date']) && !empty($data['start_date']) ? date('Y-m-d\TH:i:s', strtotime($data['start_date'])) : 1;
-        $endTime = isset($data['end_date']) && !empty($data['end_date']) ? date('Y-m-d\TH:i:s', strtotime($data['end_date'])) : 1;
-
-        $payload = [
-            'name' => $data['code'] ?? 'CODE' . rand(1000, 9999),
-            'promo_code_info' => [
-                'discount' => $discountAmount,
-                'is_percent' => false,
-            ],
-            'is_activated' => ($data['status'] ?? 'active') === 'active',
-            'start_time' => $startTime,
-            'end_time' => $endTime,
-        ];
-
-        $response = Http::post("{$this->baseUrl}/shops/{$this->shopId}/vouchers?api_key={$this->apiKey}", $payload);
-
-        // Log for debugging
-        \Log::info('Create Voucher payload: ', $payload);
-        \Log::info('Create Voucher response: ', ['status' => $response->status(), 'body' => $response->json()]);
-
-        if ($response->failed())
-            throw new \Exception('Failed to create voucher: ' . $response->body());
-
-        // Pancake returns a list of created vouchers or just success
-        return $response->json();
-    }
 
     // ==========================================
     // COMBOS API

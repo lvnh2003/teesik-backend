@@ -1,0 +1,46 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: teesik-app
+    restart: unless-stopped
+    ports:
+      - "8000:80"     # Trỏ cổng 8000 của host vào cổng 80 của Apache
+      - "5173:5173"   # Dành cho Vite server nếu đang phát triển React/Vue
+    volumes:
+      - .:/var/www/html
+    environment:
+      # Sẽ ghi đè file .env nếu được định nghĩa ở đây
+      DB_CONNECTION: mysql
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_DATABASE: ${DB_DATABASE:-teesik}
+      DB_USERNAME: ${DB_USERNAME:-root}
+      DB_PASSWORD: ${DB_PASSWORD:-root}
+      # Redis nếu cần
+      # REDIS_HOST: redis
+    depends_on:
+      - db
+
+  db:
+    image: mysql:8.0
+    container_name: teesik-db
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE:-teesik}
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-root}
+    volumes:
+      - teesik-mysql-data:/var/lib/mysql
+
+  # Có thể bật Redis nếu app bạn sử dụng
+  # redis:
+  #   image: redis:alpine
+  #   container_name: teesik-redis
+  #   ports:
+  #     - "6379:6379"
+
+volumes:
+  teesik-mysql-data:
