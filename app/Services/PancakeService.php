@@ -367,6 +367,15 @@ class PancakeService
         if (!is_array($variationsData))
             return $variationsPayload;
 
+        // Resolve warehouse ID ONCE before the loop to avoid N+1 API calls
+        $warehouseId = env('PANCAKE_WAREHOUSE_ID');
+        if (!$warehouseId) {
+            $warehouses = $this->getWarehouses();
+            if (!empty($warehouses)) {
+                $warehouseId = $warehouses[0]['id'];
+            }
+        }
+
         foreach ($variationsData as $variant) {
             $varPayload = [
                 'id' => $variant['id'] ?? null,
@@ -400,14 +409,6 @@ class PancakeService
 
             if (isset($variant['images']) && is_array($variant['images'])) {
                 $varPayload['images'] = $variant['images'];
-            }
-
-            $warehouseId = env('PANCAKE_WAREHOUSE_ID');
-            if (!$warehouseId) {
-                $warehouses = $this->getWarehouses();
-                if (!empty($warehouses)) {
-                    $warehouseId = $warehouses[0]['id'];
-                }
             }
 
             if ($warehouseId && isset($variant['stock_quantity'])) {
@@ -499,6 +500,7 @@ class PancakeService
             'bill_full_name' => $data['customer_name'] ?? 'Guest',
             'bill_phone_number' => $data['customer_phone'] ?? '',
             'bill_address' => $data['shipping_address'] ?? '',
+            'bill_email' => $data['customer_email'] ?? '', // ← needed for user order lookup
             'items' => collect($data['items'] ?? [])->map(function ($item) {
                 return [
                     'variation_id' => $item['variation_id'] ?? null,
@@ -662,8 +664,10 @@ class PancakeService
 
             'total_amount' => $pancakeOrder['total_amount'] ?? 0,
 
-            'status' => $pancakeOrder['status_name'] ?? 'pending',
-            'payment_status' => ($pancakeOrder['is_free_shipping'] ?? false) ? 'paid' : 'pending',
+            'status' => $pancakeOrder['status_name'] ?? ($pancakeOrder['status'] ?? 'pending'),
+            'payment_status' => $pancakeOrder['payment_type'] ?? ($pancakeOrder['payment_status'] ?? 'unpaid'),
+            'payment_method' => $pancakeOrder['payment_method'] ?? ($pancakeOrder['payment_type'] ?? 'cod'),
+            'transaction_id' => $pancakeOrder['transaction_id'] ?? null,
 
             'created_at' => $pancakeOrder['inserted_at'] ?? null,
 

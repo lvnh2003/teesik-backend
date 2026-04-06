@@ -48,13 +48,17 @@ Route::post('/cart/add', [CartController::class, 'add']);
 Route::post('/cart/update', [CartController::class, 'update']);
 Route::post('/cart/remove', [CartController::class, 'remove']);
 Route::post('/checkout', [OrderController::class, 'checkout']);
+Route::middleware('auth:api')->get('/orders/user', [OrderController::class, 'userOrders']);
 Route::post('/payment/process', [PaymentController::class, 'process']);
 
 use App\Http\Controllers\ProductController as PublicProductController;
 Route::get('/products', [PublicProductController::class, 'index']);
 Route::get('/products/{id}', [PublicProductController::class, 'show']);
 
-Route::prefix('admin')->group(function () {
+// Public categories (no auth required - used by product filters)
+Route::get('/categories', [CategoryController::class, 'index']);
+
+Route::prefix('admin')->middleware(['auth:api', 'admin'])->group(function () {
     Route::apiResource('users', \App\Http\Controllers\Admin\UserController::class);
     Route::apiResource('products', ProductController::class);
     Route::apiResource('categories', CategoryController::class);

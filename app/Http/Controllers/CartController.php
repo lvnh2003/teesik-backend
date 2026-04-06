@@ -86,15 +86,17 @@ class CartController extends Controller
         // $cart->load(['items']); 
 
         $items = $cart->items->map(function ($item) {
+            $data = $item->data ?? [];
             return [
-                'id' => $item->id, // Cart item ID
+                'id' => $item->id,
                 'product_id' => $item->product_id,
                 'variant_id' => $item->product_variant_id,
-                'name' => $item->name, // Accessor from data
-                'price' => $item->price, // Accessor from data
+                'name' => $item->name,
+                'price' => $item->price,
                 'quantity' => $item->quantity,
-                'image' => $item->image, // Accessor from data
-                'slug' => Str::slug($item->name), // Generate slug from name on the fly if needed
+                'image' => $item->image,
+                'attributes' => $data['attributes'] ?? [],
+                'slug' => Str::slug($item->name),
             ];
         });
 
@@ -117,44 +119,63 @@ class CartController extends Controller
 
         $productId = $request->input('product_id');
         $quantity = $request->input('quantity', 1);
-        $variantId = $request->input('variant_id'); // Optional, Pancake Variation ID
-
-        // 1. Fetch product details from Pancake to validate and get info
-        // We use $productId (which should be Pancake ID).
-        // If variantId is present, we might need to find that specific variant details within the product response
-        // OR if productId IS the variation ID (which getProducts often returns), we just fetch lookup.
-
-        // Assumption: Frontend sends Product ID (Pancake ID). 
-        // If it's a variation, Pancake API `getProducts` returns variations as items.
-        // So `getPancakeProduct` usually returns the item details we need.
+        $variantId = $request->input('variant_id');
 
         try {
-            // Note: PancakeService::getProduct($id) uses /shops/{id}/products/{product_id}
-            // If the ID passed is a variation ID, let's hope Pancake supports looking it up or we need to adjust service.
-            // Verified in Service: getProduct calls .../products/{id}.
-            // If the frontend uses the ID from `getProducts`, it is likely a Variation ID (uuid).
-
             $pancakeProduct = $this->pancakeService->getProduct($productId);
 
-            // Extract info
             $name = $pancakeProduct['name'];
             $price = $pancakeProduct['price'];
-            $image = $pancakeProduct['images'][0]['image_path'] ?? null;
-            if (empty($image) && !empty($pancakeProduct['images'][0])) {
-                // handle if image is just string in some cases? 
-                // mapProduct: 'images' => $pancakeProduct['images'] ?? []
-                // usually array of objects or strings.
-                // let's assume mapProduct returns standard array.
+            $image = null;
+            $attributes = [];
+
+            // Extract image from product
+            if (!empty($pancakeProduct['images']) && is_array($pancakeProduct['images'])) {
+                $firstImage = $pancakeProduct['images'][0];
+                if (is_array($firstImage) && isset($firstImage['image_path'])) {
+                    $image = $firstImage['image_path'];
+                } elseif (is_string($firstImage)) {
+                    $image = $firstImage;
+                }
             }
-            // If empty, try to fallback or use placeholder?
-            if (is_array($pancakeProduct['images']) && count($pancakeProduct['images']) > 0) {
-                // Check structure of images from mapProduct
-                // it passes raw pancake images array usually.
-                // let's check mapProduct again.
+
+            // If variant_id provided, find the specific variation for correct price/attributes
+            if ($variantId && !empty($pancakeProduct['variations'])) {
+                foreach ($pancakeProduct['variations'] as $variation) {
+                    if ($variation['id'] === $variantId) {
+                        $price = $variation['price'] ?? $price;
+                        $attributes = $variation['attributes'] ?? [];
+
+                        // Use variation image if available
+                        if (!empty($variation['images'])) {
+                            $varImg = $variation['images'][0];
+                            if (is_array($varImg) && isset($varImg['image_path'])) {
+                                $image = $varImg['image_path'];
+                            } elseif (is_string($varImg)) {
+                                $image = $varImg;
+                            }
+                        }
+
+                        // Append variation attributes to name
+                        if (!empty($attributes)) {
+                            $attrParts = implode(', ', array_values($attributes));
+                            $name = $pancakeProduct['name'] . " ($attrParts)";
+                        }
+                        break;
+                    }
+                }
+            }
+
+            // If no variant_id but product has variations, use first variation's ID
+            if (!$variantId && !empty($pancakeProduct['variations'])) {
+                $firstVariation = $pancakeProduct['variations'][0];
+                $variantId = $firstVariation['id'];
+                $price = $firstVariation['price'] ?? $price;
+                $attributes = $firstVariation['attributes'] ?? [];
             }
 
         } catch (\Exception $e) {
-            return response()->json(['message' => 'Product not found on Pancake'], 404);
+            return response()->json(['message' => 'Product not found on Pancake: ' . $e->getMessage()], 404);
         }
 
         $item = $cart->items()
@@ -164,9 +185,9 @@ class CartController extends Controller
 
         if ($item) {
             $item->quantity += $quantity;
-            // Update price/info if changed?
             $data = $item->data ?? [];
-            $data['price'] = $price; // Update price to latest
+            $data['price'] = $price;
+            $data['attributes'] = $attributes;
             $item->data = $data;
             $item->save();
         } else {
@@ -178,8 +199,7 @@ class CartController extends Controller
                     'name' => $name,
                     'price' => $price,
                     'image' => $image,
-                    // Add other details like color/size if available in $pancakeProduct or if we fetch variation specific.
-                    // If productId is variation ID, $name is likely "Name (Size, Color)".
+                    'attributes' => $attributes,
                 ]
             ]);
         }
