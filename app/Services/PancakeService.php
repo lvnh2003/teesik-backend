@@ -78,36 +78,27 @@ class PancakeService
 
     public function getProducts($page = 1, $limit = 30, $search = null, $category_id = null)
     {
-        $queryParams = [
-            'api_key' => $this->apiKey,
-            'page_number' => $page,
-            'page_size' => $limit,
-            // 'fields' => 'id,name,images,variations,categories,retail_price,remain_quantity,original_price', // Optional filtering
-        ];
+        $cacheKey = "pancake_products_{$page}_{$limit}_{$search}_{$category_id}";
+        return \Illuminate\Support\Facades\Cache::remember($cacheKey, 600, function () use ($page, $limit, $search, $category_id) {
+            $queryParams = [
+                'api_key' => $this->apiKey,
+                'page_number' => $page,
+                'page_size' => $limit,
+            ];
 
-        if ($search) {
-            $queryParams['search'] = $search;
-        }
+            if ($search) {
+                $queryParams['search'] = $search;
+            }
 
-        // Use /products/variations to get full details including images and proper structure
-        // But this returns a list of variations. We need to group them by product_id to form "Products".
-        // Pagination here applies to variations, which might be tricky if we want 30 *products*.
-        // For now, let's fetch variations and group them. 
-        // Note: This might result in fewer than $limit products per page if products have multiple variations.
-        // A better approach would be to fetch products, then fetch variations for them, but that's N+1.
-        // Or fetch a larger number of variations and group.
+            // The user specifically pointed to this endpoint for correct display.
+            $response = Http::get("{$this->baseUrl}/shops/{$this->shopId}/products/variations", $queryParams);
 
-        // Let's try fetching from /products/variations and grouping.
-        // The user specifically pointed to this endpoint for correct display.
+            if ($response->failed()) {
+                throw new \Exception('Failed to fetch products from Pancake: ' . $response->body());
+            }
 
-        $response = Http::get("{$this->baseUrl}/shops/{$this->shopId}/products/variations", $queryParams);
-
-        if ($response->failed()) {
-            throw new \Exception('Failed to fetch products from Pancake: ' . $response->body());
-        }
-
-        $data = $response->json();
-        $variations = collect($data['data'] ?? []);
+            $data = $response->json();
+            $variations = collect($data['data'] ?? []);
 
         // Group variations by product_id
         $grouped = $variations->groupBy('product_id');
@@ -200,12 +191,7 @@ class PancakeService
             ];
         })->values();
 
-        $total = $data['total_entries'] ?? 0; // This is total variations, not products.
-        // We can't easily get total products count without fetching all. 
-        // For now, let's use the variation count as a proxy or just pass it ensuring frontend handles pages.
-        // Actually, returning total variations count might confuse pagination of products.
-        // But since we are paginating variations, maybe it's acceptable? 
-        // Let's assume 1 product = 1 variation roughly for pagination purposes, or just return total variations count.
+        $total = $data['total_entries'] ?? 0;
 
         return new LengthAwarePaginator(
             $products,
@@ -214,6 +200,7 @@ class PancakeService
             $page,
             ['path' => url('api/admin/products')]
         );
+        });
     }
 
     public function getCategories()
@@ -266,30 +253,33 @@ class PancakeService
 
     public function getProduct($id)
     {
-        $response = Http::get("{$this->baseUrl}/shops/{$this->shopId}/products/{$id}", [
-            'api_key' => $this->apiKey
-        ]);
+        // Cache the product for 5 minutes (300 seconds) to vastly improve "Add to cart" speeds
+        return \Illuminate\Support\Facades\Cache::remember('pancake_product_' . $id, 300, function () use ($id) {
+            $response = Http::get("{$this->baseUrl}/shops/{$this->shopId}/products/{$id}", [
+                'api_key' => $this->apiKey
+            ]);
 
-        if ($response->failed()) {
-            throw new \Exception('Failed to fetch product from Pancake: ' . $response->body());
-        }
-
-        $data = $response->json();
-        $productData = $data['data'] ?? $data;
-
-        // Fetch variations if the product has them or if we want to be sure
-        // The /products/{id} endpoint might strictly limited variation info.
-        // Let's try to fetch variations explicitly.
-        try {
-            $variations = $this->getVariations($id);
-            if (!empty($variations)) {
-                $productData['variations'] = $variations;
+            if ($response->failed()) {
+                throw new \Exception('Failed to fetch product from Pancake: ' . $response->body());
             }
-        } catch (\Exception $e) {
-            \Log::warning('Failed to fetch variations for product ' . $id . ': ' . $e->getMessage());
-        }
 
-        return $this->mapProduct($productData);
+            $data = $response->json();
+            $productData = $data['data'] ?? $data;
+
+            // Fetch variations if the product has them or if we want to be sure
+            // The /products/{id} endpoint might strictly limited variation info.
+            // Let's try to fetch variations explicitly.
+            try {
+                $variations = $this->getVariations($id);
+                if (!empty($variations)) {
+                    $productData['variations'] = $variations;
+                }
+            } catch (\Exception $e) {
+                \Log::warning('Failed to fetch variations for product ' . $id . ': ' . $e->getMessage());
+            }
+
+            return $this->mapProduct($productData);
+        });
     }
 
     public function getVariations($productId)
