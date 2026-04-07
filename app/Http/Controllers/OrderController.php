@@ -3,13 +3,13 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use App\Services\PancakeService;
+use App\Services\Pancake\PancakeOrderService;
 
 class OrderController extends Controller
 {
     protected $pancakeService;
 
-    public function __construct(PancakeService $pancakeService)
+    public function __construct(PancakeOrderService $pancakeService)
     {
         $this->pancakeService = $pancakeService;
     }
@@ -35,7 +35,7 @@ class OrderController extends Controller
         if ($user) {
             $cart = \App\Models\Cart::where('user_id', $user->id)->with('items')->first();
         }
-        
+
         if (!$cart && $cartId) {
             $cart = \App\Models\Cart::where('cart_id', $cartId)->with('items')->first();
         }
@@ -56,7 +56,7 @@ class OrderController extends Controller
             });
         }
 
-        // Fallback: items in request body — re-validate prices from Pancake
+        // Fallback: items in request body -- re-validate prices from Pancake
         if (empty($items)) {
             $inputItems = $request->input('items', []);
             if (!empty($inputItems)) {
@@ -79,7 +79,7 @@ class OrderController extends Controller
                 }
                 $total = collect($items)->sum(fn($item) => $item['price'] * $item['quantity']);
             } else {
-                return response()->json(['message' => 'Cart is empty'], 400);
+                return $this->errorResponse('Cart is empty', 400);
             }
         }
 
@@ -101,86 +101,61 @@ class OrderController extends Controller
             'note' => $request->input('note', ''),
         ];
 
-        try {
-            $pancakeOrder = $this->pancakeService->createOrder($orderData);
+        $pancakeOrder = $this->pancakeService->createOrder($orderData);
 
-            // Optional: Save to local DB as cache or history?
-            // User said "only manipulate on pancake".
-            // So we return the pancake order.
+        // Optional: Save to local DB as cache or history?
+        // User said "only manipulate on pancake".
+        // So we return the pancake order.
 
-            // Clear cart
-            if (isset($cart)) {
-                $cart->items()->delete();
-                $cart->delete();
-            }
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Order placed successfully',
-                'order' => $pancakeOrder
-            ], 201);
-
-        } catch (\Exception $e) {
-            return response()->json(['message' => 'Order failed: ' . $e->getMessage()], 500);
+        // Clear cart
+        if (isset($cart)) {
+            $cart->items()->delete();
+            $cart->delete();
         }
+
+        return $this->createdResponse($pancakeOrder, 'Order placed successfully');
     }
 
     public function userOrders(Request $request)
     {
-        try {
-            $user = $request->user('api');
-            if (!$user) {
-                return response()->json(['success' => false, 'message' => 'Unauthorized'], 401);
-            }
-
-            $page = $request->get('page', 1);
-            $limit = $request->get('limit', 15);
-            $search = $request->get('search');
-            $status = $request->get('status');
-
-            // Search Pancake by user's phone number (more reliable than email
-            // since Pancake orders are created with phone as the primary identifier).
-            // We fetch orders matching the phone, then verify email ownership locally.
-            $pancakeSearchQuery = $user->phone ?? $user->email;
-            $paginator = $this->pancakeService->getOrders($page, $limit, $pancakeSearchQuery, $status);
-
-            $items = collect($paginator->items());
-
-            // Filter to only orders belonging to this user (match by phone OR email)
-            $userPhone = $user->phone;
-            $userEmail = $user->email;
-            $items = $items->filter(function ($order) use ($userPhone, $userEmail) {
-                $phoneMatch = $userPhone && ($order['customer_phone'] ?? '') === $userPhone;
-                $emailMatch = $userEmail && strtolower($order['customer_email'] ?? '') === strtolower($userEmail);
-                return $phoneMatch || $emailMatch;
-            })->values();
-
-            // Apply additional user search term if provided
-            if ($search) {
-                $searchLower = strtolower($search);
-                $items = $items->filter(function ($order) use ($searchLower) {
-                    $idMatch = str_contains(strtolower((string)($order['id'] ?? '')), $searchLower);
-                    $nameMatch = str_contains(strtolower($order['customer_name'] ?? ''), $searchLower);
-                    $phoneMatch = str_contains(strtolower($order['customer_phone'] ?? ''), $searchLower);
-                    return $idMatch || $nameMatch || $phoneMatch;
-                })->values();
-            }
-
-            return response()->json([
-                'success' => true,
-                'data' => $items,
-                'meta' => [
-                    'current_page' => $paginator->currentPage(),
-                    'last_page' => $paginator->lastPage(),
-                    'per_page' => $paginator->perPage(),
-                    'total' => $paginator->total(),
-                ]
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage()
-            ], 500);
+        $user = $request->user('api');
+        if (!$user) {
+            return $this->errorResponse('Unauthorized', 401);
         }
+
+        $page = $request->get('page', 1);
+        $limit = $request->get('limit', 15);
+        $search = $request->get('search');
+        $status = $request->get('status');
+
+        // Search Pancake by user's phone number (more reliable than email
+        // since Pancake orders are created with phone as the primary identifier).
+        // We fetch orders matching the phone, then verify email ownership locally.
+        $pancakeSearchQuery = $user->phone ?? $user->email;
+        $paginator = $this->pancakeService->getOrders($page, $limit, $pancakeSearchQuery, $status);
+
+        $items = collect($paginator->items());
+
+        // Filter to only orders belonging to this user (match by phone OR email)
+        $userPhone = $user->phone;
+        $userEmail = $user->email;
+        $items = $items->filter(function ($order) use ($userPhone, $userEmail) {
+            $phoneMatch = $userPhone && ($order['customer_phone'] ?? '') === $userPhone;
+            $emailMatch = $userEmail && strtolower($order['customer_email'] ?? '') === strtolower($userEmail);
+            return $phoneMatch || $emailMatch;
+        })->values();
+
+        // Apply additional user search term if provided
+        if ($search) {
+            $searchLower = strtolower($search);
+            $items = $items->filter(function ($order) use ($searchLower) {
+                $idMatch = str_contains(strtolower((string)($order['id'] ?? '')), $searchLower);
+                $nameMatch = str_contains(strtolower($order['customer_name'] ?? ''), $searchLower);
+                $phoneMatch = str_contains(strtolower($order['customer_phone'] ?? ''), $searchLower);
+                return $idMatch || $nameMatch || $phoneMatch;
+            })->values();
+        }
+
+        return $this->paginatedResponse($paginator, $items);
     }
 }

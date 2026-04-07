@@ -23,22 +23,14 @@ class PaymentController extends Controller
         $success = true; // Simulate success
 
         if ($success) {
-            return response()->json([
-                'success' => true,
-                'message' => 'Payment successful',
-                'data' => [
-                    'order_id' => $orderId,
-                    'payment_method' => $paymentMethod,
-                    'payment_status' => 'paid',
-                    'transaction_id' => 'MOCK-' . strtoupper(uniqid()),
-                ]
-            ]);
+            return $this->successResponse([
+                'order_id' => $orderId,
+                'payment_method' => $paymentMethod,
+                'payment_status' => 'paid',
+                'transaction_id' => 'MOCK-' . strtoupper(uniqid()),
+            ], 'Payment successful');
         } else {
-            return response()->json([
-                'success' => false,
-                'message' => 'Payment failed'
-            ], 400);
+            return $this->errorResponse('Payment failed', 400);
         }
     }
 }
-

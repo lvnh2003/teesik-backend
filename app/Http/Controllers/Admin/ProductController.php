@@ -4,61 +4,36 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use App\Services\PancakeService;
+use App\Services\Pancake\PancakeProductService;
 
 class ProductController extends Controller
 {
     protected $pancakeService;
 
-    public function __construct(PancakeService $pancakeService)
+    public function __construct(PancakeProductService $pancakeService)
     {
         $this->pancakeService = $pancakeService;
     }
 
     public function index(Request $request)
     {
-        try {
-            $page = $request->get('page', 1);
-            $limit = $request->get('limit', 15);
-            $search = $request->get('search');
-            $categoryId = $request->get('category_id'); // If supported in future
+        $page = $request->get('page', 1);
+        $limit = $request->get('limit', 15);
+        $search = $request->get('search');
+        $categoryId = $request->get('category_id'); // If supported in future
 
-            // Note: status filter not fully implemented in service yet, but can be passed if needed
+        // Note: status filter not fully implemented in service yet, but can be passed if needed
 
-            $paginator = $this->pancakeService->getProducts($page, $limit, $search, $categoryId);
+        $paginator = $this->pancakeService->getProducts($page, $limit, $search, $categoryId);
 
-            return response()->json([
-                'success' => true,
-                'data' => $paginator->items(),
-                'meta' => [
-                    'current_page' => $paginator->currentPage(),
-                    'last_page' => $paginator->lastPage(),
-                    'per_page' => $paginator->perPage(),
-                    'total' => $paginator->total(),
-                ]
-            ]);
-
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Error loading products from Pancake: ' . $e->getMessage()
-            ], 500);
-        }
+        return $this->paginatedResponse($paginator);
     }
 
     public function show($id)
     {
-        try {
-            $product = $this->pancakeService->getProduct($id);
+        $product = $this->pancakeService->getProduct($id);
 
-            return response()->json([
-                'success' => true,
-                'data' => $product
-            ]);
-
-        } catch (\Exception $e) {
-            return response()->json(['message' => 'Error fetching product', 'error' => $e->getMessage()], 500);
-        }
+        return $this->successResponse($product);
     }
 
     public function store(Request $request)
@@ -67,40 +42,16 @@ class ProductController extends Controller
             'name' => 'required|string|max:255',
         ]);
 
-        try {
-            $product = $this->pancakeService->createProduct($request->all());
+        $product = $this->pancakeService->createProduct($request->all());
 
-            return response()->json([
-                'success' => true,
-                'data' => $product,
-                'message' => 'Product created successfully on Pancake'
-            ], 201);
-
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Error creating product: ' . $e->getMessage()
-            ], 500);
-        }
+        return $this->createdResponse($product, 'Product created successfully on Pancake');
     }
 
     public function update(Request $request, $id)
     {
-        try {
-            $product = $this->pancakeService->updateProduct($id, $request->all());
+        $product = $this->pancakeService->updateProduct($id, $request->all());
 
-            return response()->json([
-                'success' => true,
-                'data' => $product,
-                'message' => 'Product updated successfully on Pancake'
-            ]);
-
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Error updating product: ' . $e->getMessage()
-            ], 500);
-        }
+        return $this->successResponse($product, 'Product updated successfully on Pancake');
     }
 
     public function destroy($id)

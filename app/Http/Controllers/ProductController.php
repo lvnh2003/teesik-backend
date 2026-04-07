@@ -3,124 +3,79 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use App\Services\PancakeService;
+use App\Services\Pancake\PancakeProductService;
 
 class ProductController extends Controller
 {
     protected $pancakeService;
 
-    public function __construct(PancakeService $pancakeService)
+    public function __construct(PancakeProductService $pancakeService)
     {
         $this->pancakeService = $pancakeService;
     }
 
     public function index(Request $request)
     {
-        try {
-            $page = $request->get('page', 1);
-            $limit = $request->get('limit', 12);
-            $search = $request->get('search');
-            $categoryId = $request->get('category_id');
+        $page = $request->get('page', 1);
+        $limit = $request->get('limit', 12);
+        $search = $request->get('search');
+        $categoryId = $request->get('category_id');
 
-            // Handle slug category filter if needed, but Pancake uses ID.
-            // Frontend should pass ID or we'd need a slug-to-ID lookup (which we can't easily do without caching categories).
-            // For now assume frontend passes category_id or we ignore slug filter.
+        // Handle slug category filter if needed, but Pancake uses ID.
+        // Frontend should pass ID or we'd need a slug-to-ID lookup (which we can't easily do without caching categories).
+        // For now assume frontend passes category_id or we ignore slug filter.
 
-            $paginator = $this->pancakeService->getProducts($page, $limit, $search, $categoryId);
+        $paginator = $this->pancakeService->getProducts($page, $limit, $search, $categoryId);
 
-            return response()->json([
-                'success' => true,
-                'data' => $paginator->items(),
-                'meta' => [
-                    'current_page' => $paginator->currentPage(),
-                    'last_page' => $paginator->lastPage(),
-                    'per_page' => $paginator->perPage(),
-                    'total' => $paginator->total(),
-                ]
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Error fetching products: ' . $e->getMessage()
-            ], 500);
-        }
+        return $this->paginatedResponse($paginator);
     }
 
     public function store(Request $request)
     {
-        try {
-            $data = $request->all();
+        $data = $request->all();
 
-            // Handle variations (including file uploads and attribute parsing)
-            if (isset($data['variations']) && is_array($data['variations'])) {
-                $data['variations'] = $this->processVariations($request, $data['variations']);
-            }
-
-            // Parse global product_attributes
-            if (isset($data['product_attributes']) && is_array($data['product_attributes'])) {
-                $data['product_attributes'] = $this->parseAttributes($data['product_attributes']);
-            }
-
-            $product = $this->pancakeService->createProduct($data);
-
-            return response()->json([
-                'success' => true,
-                'data' => $product,
-                'message' => 'Product created successfully'
-            ], 201);
-        } catch (\Exception $e) {
-            \Log::error('Product Create Error: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to create product: ' . $e->getMessage()
-            ], 500);
+        // Handle variations (including file uploads and attribute parsing)
+        if (isset($data['variations']) && is_array($data['variations'])) {
+            $data['variations'] = $this->processVariations($request, $data['variations']);
         }
+
+        // Parse global product_attributes
+        if (isset($data['product_attributes']) && is_array($data['product_attributes'])) {
+            $data['product_attributes'] = $this->parseAttributes($data['product_attributes']);
+        }
+
+        $product = $this->pancakeService->createProduct($data);
+
+        return $this->createdResponse($product, 'Product created successfully');
     }
 
     public function show($id)
     {
         try {
             $product = $this->pancakeService->getProduct($id);
-
-            return response()->json([
-                'success' => true,
-                'data' => $product
-            ]);
+            return $this->successResponse($product);
         } catch (\Exception $e) {
-            return response()->json(['message' => 'Product not found', 'error' => $e->getMessage()], 404);
+            return $this->errorResponse('Product not found', 404);
         }
     }
 
     public function update(Request $request, $id)
     {
-        try {
-            $data = $request->all();
+        $data = $request->all();
 
-            // Handle variations (including file uploads and attribute parsing)
-            if (isset($data['variations']) && is_array($data['variations'])) {
-                $data['variations'] = $this->processVariations($request, $data['variations']);
-            }
-
-            // Parse global product_attributes
-            if (isset($data['product_attributes']) && is_array($data['product_attributes'])) {
-                $data['product_attributes'] = $this->parseAttributes($data['product_attributes']);
-            }
-
-            $updatedProduct = $this->pancakeService->updateProduct($id, $data);
-
-            return response()->json([
-                'success' => true,
-                'data' => $updatedProduct,
-                'message' => 'Product updated successfully'
-            ]);
-
-        } catch (\Exception $e) {
-            \Log::error('Product Update Error: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to update product: ' . $e->getMessage()
-            ], 500);
+        // Handle variations (including file uploads and attribute parsing)
+        if (isset($data['variations']) && is_array($data['variations'])) {
+            $data['variations'] = $this->processVariations($request, $data['variations']);
         }
+
+        // Parse global product_attributes
+        if (isset($data['product_attributes']) && is_array($data['product_attributes'])) {
+            $data['product_attributes'] = $this->parseAttributes($data['product_attributes']);
+        }
+
+        $updatedProduct = $this->pancakeService->updateProduct($id, $data);
+
+        return $this->successResponse($updatedProduct, 'Product updated successfully');
     }
 
     /**

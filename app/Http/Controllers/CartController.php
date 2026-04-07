@@ -6,13 +6,13 @@ use App\Models\Cart;
 use App\Models\CartItem;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
-use App\Services\PancakeService;
+use App\Services\Pancake\PancakeProductService;
 
 class CartController extends Controller
 {
     protected $pancakeService;
 
-    public function __construct(PancakeService $pancakeService)
+    public function __construct(PancakeProductService $pancakeService)
     {
         $this->pancakeService = $pancakeService;
     }
@@ -83,7 +83,7 @@ class CartController extends Controller
         }
 
         // No need to load relations as we store data in 'data' column
-        // $cart->load(['items']); 
+        // $cart->load(['items']);
 
         $items = $cart->items->map(function ($item) {
             $data = $item->data ?? [];
@@ -104,7 +104,7 @@ class CartController extends Controller
             return $item['price'] * $item['quantity'];
         });
 
-        return response()->json([
+        return $this->successResponse([
             'id' => $cart->cart_id,
             'items' => $items,
             'total' => $total
@@ -115,7 +115,7 @@ class CartController extends Controller
     {
         $cart = $this->getCart($request);
         if (!$cart)
-            return response()->json(['message' => 'Cart ID missing'], 400);
+            return $this->errorResponse('Cart ID missing', 400);
 
         $productId = $request->input('product_id');
         $quantity = $request->input('quantity', 1);
@@ -175,7 +175,7 @@ class CartController extends Controller
             }
 
         } catch (\Exception $e) {
-            return response()->json(['message' => 'Product not found on Pancake: ' . $e->getMessage()], 404);
+            return $this->errorResponse('Product not found on Pancake', 404);
         }
 
         $item = $cart->items()
@@ -211,7 +211,7 @@ class CartController extends Controller
     {
         $cart = $this->getCart($request);
         if (!$cart)
-            return response()->json(['message' => 'Cart empty'], 404);
+            return $this->errorResponse('Cart empty', 404);
 
         $productId = $request->input('product_id');
         $quantity = $request->input('quantity');
@@ -238,7 +238,7 @@ class CartController extends Controller
     {
         $cart = $this->getCart($request);
         if (!$cart)
-            return response()->json(['message' => 'Cart empty'], 404);
+            return $this->errorResponse('Cart empty', 404);
 
         $productId = $request->input('product_id');
 

@@ -18,7 +18,7 @@ class UserController extends Controller
     {
         $limit = $request->input('limit', 15);
         $search = $request->input('search', '');
-        
+
         $query = User::query();
 
         if ($search) {
@@ -28,16 +28,7 @@ class UserController extends Controller
 
         $users = $query->latest()->paginate($limit);
 
-        return response()->json([
-            'success' => true,
-            'data' => $users->items(),
-            'meta' => [
-                'current_page' => $users->currentPage(),
-                'last_page' => $users->lastPage(),
-                'per_page' => $users->perPage(),
-                'total' => $users->total(),
-            ]
-        ]);
+        return $this->paginatedResponse($users);
     }
 
     /**
@@ -59,11 +50,7 @@ class UserController extends Controller
             'role' => $validated['role'],
         ]);
 
-        return response()->json([
-            'success' => true,
-            'message' => 'User created successfully',
-            'data' => $user
-        ], 201);
+        return $this->createdResponse($user, 'User created successfully');
     }
 
     /**
@@ -87,11 +74,7 @@ class UserController extends Controller
 
         $user->save();
 
-        return response()->json([
-            'success' => true,
-            'message' => 'User updated successfully',
-            'data' => $user
-        ]);
+        return $this->successResponse($user, 'User updated successfully');
     }
 
     /**
@@ -100,20 +83,14 @@ class UserController extends Controller
     public function destroy(string $id)
     {
         $user = User::findOrFail($id);
-        
+
         // Prevent deleting oneself
         if (auth()->id() == $user->id) {
-            return response()->json([
-                'success' => false,
-                'message' => 'You cannot delete your own account.'
-            ], 403);
+            return $this->errorResponse('You cannot delete your own account.', 403);
         }
 
         $user->delete();
 
-        return response()->json([
-            'success' => true,
-            'message' => 'User deleted successfully'
-        ]);
+        return $this->successResponse(null, 'User deleted successfully');
     }
 }

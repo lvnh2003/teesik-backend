@@ -1,66 +1,45 @@
 <?php
 namespace App\Http\Controllers;
 
+use App\Http\Requests\RegisterRequest;
+use App\Http\Requests\LoginRequest;
 use App\Models\User;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 
 class AuthController extends Controller
 {
     // Đăng ký
-    public function register(Request $request)
+    public function register(RegisterRequest $request)
     {
-        $request->validate([
-            'name'     => 'required|string|max:255',
-            'email'    => 'required|string|email|unique:users',
-            'password' => 'required|string|min:6|confirmed',
-        ]);
-
         $user = User::create([
             'name'     => $request->name,
             'email'    => $request->email,
             'password' => Hash::make($request->password),
-            'role'     => 'user' // Always default to 'user', admin role must be set via DB
+            'role'     => 'user'
         ]);
 
         $token = $user->createToken('authToken')->accessToken;
 
-        return response()->json([
-            'success' => true,
-            'data' => [
-                'user' => $user,
-                'token' => $token,
-                'token_type' => 'Bearer'
-            ],
-            'message' => 'Registration successful'
-        ]);
+        return $this->createdResponse(
+            ['user' => $user, 'token' => $token, 'token_type' => 'Bearer'],
+            'Registration successful'
+        );
     }
 
     // Đăng nhập
-    public function login(Request $request)
+    public function login(LoginRequest $request)
     {
-        $request->validate([
-            'email'    => 'required|email',
-            'password' => 'required',
-        ]);
-
         if (!Auth::attempt($request->only('email', 'password'))) {
-            return response()->json(['message' => 'Unauthorized'], 401);
+            return $this->errorResponse('Unauthorized', 401);
         }
 
         $user = Auth::user();
         $token = $user->createToken('authToken')->accessToken;
 
-        return response()->json([
-            'success' => true,
-            'data' => [
-                'user' => $user,
-                'token' => $token,
-                'token_type' => 'Bearer'
-            ],
-            'message' => 'Login successful'
-        ]);
-        
+        return $this->successResponse(
+            ['user' => $user, 'token' => $token, 'token_type' => 'Bearer'],
+            'Login successful'
+        );
     }
 }

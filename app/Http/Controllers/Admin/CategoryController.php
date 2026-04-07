@@ -4,28 +4,21 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use App\Services\PancakeService;
+use App\Services\Pancake\PancakeProductService;
 
 class CategoryController extends Controller
 {
     protected $pancakeService;
 
-    public function __construct(PancakeService $pancakeService)
+    public function __construct(PancakeProductService $pancakeService)
     {
         $this->pancakeService = $pancakeService;
     }
 
     public function index()
     {
-        try {
-            $categories = $this->pancakeService->getCategories();
-            return response()->json(['data' => $categories]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Error loading categories: ' . $e->getMessage()
-            ], 500);
-        }
+        $categories = $this->pancakeService->getCategories();
+        return $this->successResponse($categories);
     }
 
     public function store(Request $request)
@@ -34,21 +27,9 @@ class CategoryController extends Controller
             'name' => 'required|string|max:255',
         ]);
 
-        try {
-            $category = $this->pancakeService->createCategory($request->name);
+        $category = $this->pancakeService->createCategory($request->name);
 
-            return response()->json([
-                'success' => true,
-                'data' => $category,
-                'message' => 'Category created successfully on Pancake'
-            ], 201);
-
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Error creating category: ' . $e->getMessage()
-            ], 500);
-        }
+        return $this->createdResponse($category, 'Category created successfully on Pancake');
     }
 
     public function show($id)

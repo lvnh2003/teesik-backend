@@ -5,59 +5,36 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use App\Services\PancakeService;
+use App\Services\Pancake\PancakeOrderService;
 
 class OrderController extends Controller
 {
     protected $pancakeService;
 
-    public function __construct(PancakeService $pancakeService)
+    public function __construct(PancakeOrderService $pancakeService)
     {
         $this->pancakeService = $pancakeService;
     }
 
     public function index(Request $request)
     {
-        try {
-            $page = $request->get('page', 1);
-            $limit = $request->get('limit', 15);
-            $search = $request->get('search');
-            $status = $request->get('status');
+        $page = $request->get('page', 1);
+        $limit = $request->get('limit', 15);
+        $search = $request->get('search');
+        $status = $request->get('status');
 
-            $paginator = $this->pancakeService->getOrders($page, $limit, $search, $status);
+        $paginator = $this->pancakeService->getOrders($page, $limit, $search, $status);
 
-            return response()->json([
-                'success' => true,
-                'data' => $paginator->items(),
-                'meta' => [
-                    'current_page' => $paginator->currentPage(),
-                    'last_page' => $paginator->lastPage(),
-                    'per_page' => $paginator->perPage(),
-                    'total' => $paginator->total(),
-                ]
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage()
-            ], 500);
-        }
+        return $this->paginatedResponse($paginator);
     }
 
     public function show($id)
     {
         try {
             $order = $this->pancakeService->getOrder($id);
-
-            return response()->json([
-                'success' => true,
-                'data' => $order
-            ]);
+            return $this->successResponse($order);
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Order not found or API error: ' . $e->getMessage()
-            ], 404);
+            return $this->errorResponse('Order not found', 404);
         }
     }
 
@@ -71,37 +48,15 @@ class OrderController extends Controller
             'items.*.quantity' => 'required|integer|min:1',
         ]);
 
-        try {
-            $order = $this->pancakeService->createOrder($request->all());
+        $order = $this->pancakeService->createOrder($request->all());
 
-            return response()->json([
-                'success' => true,
-                'data' => $order,
-                'message' => 'Order created successfully on Pancake'
-            ], 201);
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Error creating order: ' . $e->getMessage()
-            ], 500);
-        }
+        return $this->createdResponse($order, 'Order created successfully on Pancake');
     }
 
     public function update(Request $request, $id)
     {
-        try {
-            $order = $this->pancakeService->updateOrder($id, $request->all());
+        $order = $this->pancakeService->updateOrder($id, $request->all());
 
-            return response()->json([
-                'success' => true,
-                'data' => $order,
-                'message' => 'Order updated successfully on Pancake'
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Error updating order: ' . $e->getMessage()
-            ], 500);
-        }
+        return $this->successResponse($order, 'Order updated successfully on Pancake');
     }
 }
