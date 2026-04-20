@@ -167,10 +167,20 @@ class PancakeOrderService extends PancakeClient
                     }
                 }
 
+                $productName = $item['product_name'] ?? '';
+                if (empty($productName) || $productName === 'Unknown Item') {
+                    $productName = is_array($variationInfo) ? ($variationInfo['name'] ?? 'Unknown Item') : 'Unknown Item';
+                }
+
+                $price = $item['price'] ?? 0;
+                if (empty($price) && is_array($variationInfo)) {
+                    $price = $variationInfo['retail_price'] ?? 0;
+                }
+
                 return [
-                    'product_name' => $item['product_name'] ?? 'Unknown Item',
+                    'product_name' => $productName,
                     'quantity' => $item['quantity'] ?? 0,
-                    'price' => $item['price'] ?? 0,
+                    'price' => $price,
                     'variation_info' => $variationString,
                     'image' => $image,
                 ];

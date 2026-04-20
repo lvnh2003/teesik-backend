@@ -48,6 +48,7 @@ Route::prefix('v1')->group(function () {
             ],
         ]);
     });
+    Route::middleware('auth:api')->put('/auth/profile', [AuthController::class, 'updateProfile']);
 
     // Cart & Checkout
     Route::get('/cart', [CartController::class, 'index']);
@@ -57,6 +58,24 @@ Route::prefix('v1')->group(function () {
     Route::post('/checkout', [OrderController::class, 'checkout']);
     Route::middleware('auth:api')->get('/orders/user', [OrderController::class, 'userOrders']);
     Route::post('/payment/process', [PaymentController::class, 'process']);
+
+    // Wishlist & Voucher
+    Route::middleware('auth:api')->get('/wishlists', [\App\Http\Controllers\WishlistController::class, 'index']);
+    Route::middleware('auth:api')->post('/wishlists/toggle', [\App\Http\Controllers\WishlistController::class, 'toggle']);
+    Route::post('/vouchers/validate', [\App\Http\Controllers\VoucherController::class, 'validateVoucher']);
+
+    // User Addresses
+    Route::middleware('auth:api')->get('/user/addresses', [\App\Http\Controllers\UserAddressController::class, 'index']);
+    Route::middleware('auth:api')->post('/user/addresses', [\App\Http\Controllers\UserAddressController::class, 'store']);
+    Route::middleware('auth:api')->put('/user/addresses/{id}', [\App\Http\Controllers\UserAddressController::class, 'update']);
+    Route::middleware('auth:api')->delete('/user/addresses/{id}', [\App\Http\Controllers\UserAddressController::class, 'destroy']);
+    Route::middleware('auth:api')->put('/user/addresses/{id}/default', [\App\Http\Controllers\UserAddressController::class, 'setDefault']);
+
+    // Shipping & GHN Endpoints
+    Route::get('/shipping/provinces', [\App\Http\Controllers\ShippingController::class, 'getProvinces']);
+    Route::get('/shipping/districts', [\App\Http\Controllers\ShippingController::class, 'getDistricts']);
+    Route::get('/shipping/wards', [\App\Http\Controllers\ShippingController::class, 'getWards']);
+    Route::post('/shipping/calculate', [\App\Http\Controllers\ShippingController::class, 'calculateFee']);
 
     Route::get('/products', [PublicProductController::class, 'index']);
     Route::get('/products/{id}', [PublicProductController::class, 'show']);

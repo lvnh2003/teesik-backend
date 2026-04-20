@@ -4,14 +4,17 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Services\Pancake\PancakeOrderService;
+use App\Services\Pancake\PancakeProductService;
 
 class OrderController extends Controller
 {
     protected $pancakeService;
+    protected $productService;
 
-    public function __construct(PancakeOrderService $pancakeService)
+    public function __construct(PancakeOrderService $pancakeService, PancakeProductService $productService)
     {
         $this->pancakeService = $pancakeService;
+        $this->productService = $productService;
     }
 
     public function checkout(Request $request)
@@ -64,7 +67,7 @@ class OrderController extends Controller
                 foreach ($inputItems as $inputItem) {
                     try {
                         // Re-fetch price from Pancake to prevent price tampering
-                        $pancakeProduct = $this->pancakeService->getProduct($inputItem['product_id']);
+                        $pancakeProduct = $this->productService->getProduct($inputItem['product_id']);
                         $price = $pancakeProduct['price'] ?? 0;
                     } catch (\Exception $e) {
                         $price = $inputItem['price'] ?? 0; // Fallback if Pancake unavailable
@@ -83,6 +86,42 @@ class OrderController extends Controller
             }
         }
 
+        // --- VOUCHER VALIDATION ---
+        $voucherCode = $request->input('voucher_code');
+        $discountAmount = 0;
+
+        if ($voucherCode) {
+            try {
+                $marketingService = app(\App\Services\Pancake\PancakeMarketingService::class);
+                $paginator = $marketingService->getVouchers(1, 100);
+                $vouchers = collect($paginator->items());
+                
+                $voucher = $vouchers->firstWhere('code', strtoupper($voucherCode));
+                if (!$voucher) $voucher = $vouchers->firstWhere('name', strtoupper($voucherCode));
+
+                if ($voucher) {
+                    $minOrder = $voucher['condition_amount'] ?? ($voucher['min_order_value'] ?? 0);
+                    if ($total >= $minOrder) {
+                        $isPercent = $voucher['is_use_percent'] ?? ($voucher['is_percent'] ?? false);
+                        if ($isPercent) {
+                            $percent = $voucher['value_discount'] ?? 0;
+                            $discountAmount = ($total * $percent) / 100;
+                            $maxDiscount = $voucher['max_amount_discount'] ?? ($voucher['max_discount'] ?? 0);
+                            if ($maxDiscount > 0 && $discountAmount > $maxDiscount) {
+                                $discountAmount = $maxDiscount;
+                            }
+                        } else {
+                            $discountAmount = $voucher['value_discount'] ?? 0;
+                        }
+                        
+                        if ($discountAmount > $total) $discountAmount = $total;
+                    }
+                }
+            } catch (\Exception $e) {}
+        }
+
+        $finalTotal = $total - $discountAmount;
+
         // Prepare data for Pancake
         $orderData = [
             'customer_name' => $request->input('customer_name'),
@@ -97,8 +136,8 @@ class OrderController extends Controller
                     'price' => $item['price'] ?? 0,
                 ];
             })->toArray(),
-            'total_amount' => $total,
-            'note' => $request->input('note', ''),
+            'total_amount' => $finalTotal,
+            'note' => ($voucherCode ? "Sử dụng ưu đãi: {$voucherCode}. " : "") . $request->input('note', ''),
         ];
 
         $pancakeOrder = $this->pancakeService->createOrder($orderData);
