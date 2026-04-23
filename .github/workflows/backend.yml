@@ -9,8 +9,9 @@ on:
 
 # ─── Global ───────────────────────────────────────────────────────────────────
 env:
-  PHP_VERSION: "8.4"
+  PHP_VERSION: "8.2"
   IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/teesik-backend
+  WORKING_DIRECTORY: teesik-backend
 
 concurrency:
   group: "backend-${{ github.ref }}"
@@ -50,14 +51,16 @@ jobs:
       - name: Cache Composer dependencies
         uses: actions/cache@v4
         with:
-          path: vendor
-          key: composer-${{ hashFiles('composer.lock') }}
+          path: ${{ env.WORKING_DIRECTORY }}/vendor
+          key: composer-${{ hashFiles('teesik-backend/composer.lock') }}
           restore-keys: composer-
 
       - name: Install dependencies
-        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+        run: composer install --no-interaction --prefer-dist --optimize-autoloader --ignore-platform-req=php+
 
       - name: Prepare Laravel environment
+        working-directory: ${{ env.WORKING_DIRECTORY }}
         run: |
           cp .env.example .env
           php artisan key:generate
@@ -70,6 +73,7 @@ jobs:
           DB_PASSWORD: root
 
       - name: Run migrations
+        working-directory: ${{ env.WORKING_DIRECTORY }}
         run: php artisan migrate --force
         env:
           DB_CONNECTION: mysql
@@ -80,6 +84,7 @@ jobs:
           DB_PASSWORD: root
 
       - name: Run PHPUnit tests
+        working-directory: ${{ env.WORKING_DIRECTORY }}
         run: php artisan test --parallel
         env:
           DB_CONNECTION: mysql
@@ -129,7 +134,7 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: ${{ env.WORKING_DIRECTORY }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -151,43 +156,47 @@ jobs:
 #   DB_PASSWORD      — MySQL root password on the server
 # ──────────────────────────────────────────────────────────────────────────────
 
-  # deploy:
-  #   name: 🚀 Deploy → AWS EC2
-  #   runs-on: ubuntu-latest
-  #   needs: build
-  #   if: github.event_name != 'pull_request'
-  #
-  #   environment:
-  #     name: production
-  #     url: http://${{ secrets.SSH_HOST }}:8000
-  #
-  #   steps:
-  #     - name: Deploy via SSH
-  #       uses: appleboy/ssh-action@v1
-  #       with:
-  #         host: ${{ secrets.SSH_HOST }}
-  #         username: ${{ secrets.SSH_USER }}
-  #         key: ${{ secrets.SSH_PRIVATE_KEY }}
-  #         port: ${{ secrets.SSH_PORT }}
-  #         script: |
-  #           set -e
-  #           cd ~/teesik-backend
-  #
-  #           # Pull latest image from GHCR
-  #           echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io \
-  #             -u ${{ github.actor }} --password-stdin
-  #           docker compose pull app
-  #
-  #           # Restart with zero downtime
-  #           docker compose up -d --no-deps app
-  #
-  #           # Run migrations
-  #           docker compose exec -T app php artisan migrate --force
-  #
-  #           # Clear caches
-  #           docker compose exec -T app php artisan config:cache
-  #           docker compose exec -T app php artisan route:cache
-  #           docker compose exec -T app php artisan view:cache
-  #
-  #           # Remove unused Docker images
-  #           docker image prune -f
+  deploy:
+    name: 🚀 Deploy → AWS EC2
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name != 'pull_request'
+
+    environment:
+      name: production
+      url: http://${{ secrets.SSH_HOST }}
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            set -e
+            cd ~/teesik-backend
+
+            # Pull latest image from GHCR
+            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io \
+              -u ${{ github.actor }} --password-stdin
+            
+            # Create/Update docker-compose.yml if needed (optional)
+            # For now assume it exists on the server
+            
+            docker compose pull app
+            
+            # Restart with zero downtime
+            docker compose up -d --no-deps app
+
+            # Run migrations
+            docker compose exec -T app php artisan migrate --force
+
+            # Clear caches
+            docker compose exec -T app php artisan config:cache
+            docker compose exec -T app php artisan route:cache
+            docker compose exec -T app php artisan view:cache
+
+            # Remove unused Docker images
+            docker image prune -f
