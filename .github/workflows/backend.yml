@@ -57,7 +57,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: ${{ env.WORKING_DIRECTORY }}
-        run: composer install --no-interaction --prefer-dist --optimize-autoloader --ignore-platform-req=php+
+        run: composer update --no-interaction --prefer-dist --optimize-autoloader --ignore-platform-req=php+
 
       - name: Prepare Laravel environment
         working-directory: ${{ env.WORKING_DIRECTORY }}
