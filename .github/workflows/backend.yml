@@ -156,47 +156,44 @@ jobs:
 #   DB_PASSWORD      — MySQL root password on the server
 # ──────────────────────────────────────────────────────────────────────────────
 
-  deploy:
-    name: 🚀 Deploy → AWS EC2
-    runs-on: ubuntu-latest
-    needs: build
-    if: github.event_name != 'pull_request'
-
-    environment:
-      name: production
-      url: http://${{ secrets.SSH_HOST }}
-
-    steps:
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT }}
-          script: |
-            set -e
-            cd ~/teesik-backend
-
-            # Pull latest image from GHCR
-            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io \
-              -u ${{ github.actor }} --password-stdin
-            
-            # Create/Update docker-compose.yml if needed (optional)
-            # For now assume it exists on the server
-            
-            docker compose pull app
-            
-            # Restart with zero downtime
-            docker compose up -d --no-deps app
-
-            # Run migrations
-            docker compose exec -T app php artisan migrate --force
-
-            # Clear caches
-            docker compose exec -T app php artisan config:cache
-            docker compose exec -T app php artisan route:cache
-            docker compose exec -T app php artisan view:cache
-
-            # Remove unused Docker images
-            docker image prune -f
+  # deploy:
+  #   name: 🚀 Deploy → AWS EC2
+  #   runs-on: ubuntu-latest
+  #   needs: build
+  #   if: github.event_name != 'pull_request'
+  #
+  #   environment:
+  #     name: production
+  #     url: http://your-server-ip # Thay bằng IP thực tế khi có
+  #
+  #   steps:
+  #     - name: Deploy via SSH
+  #       uses: appleboy/ssh-action@v1
+  #       with:
+  #         host: ${{ secrets.SSH_HOST }}
+  #         username: ${{ secrets.SSH_USER }}
+  #         key: ${{ secrets.SSH_PRIVATE_KEY }}
+  #         port: ${{ secrets.SSH_PORT }}
+  #         script: |
+  #           set -e
+  #           cd ~/teesik-backend
+  #
+  #           # Pull latest image from GHCR
+  #           echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io \
+  #             -u ${{ github.actor }} --password-stdin
+  #           
+  #           docker compose pull app
+  #           
+  #           # Restart with zero downtime
+  #           docker compose up -d --no-deps app
+  #
+  #           # Run migrations
+  #           docker compose exec -T app php artisan migrate --force
+  #
+  #           # Clear caches
+  #           docker compose exec -T app php artisan config:cache
+  #           docker compose exec -T app php artisan route:cache
+  #           docker compose exec -T app php artisan view:cache
+  #
+  #           # Remove unused Docker images
+  #           docker image prune -f
