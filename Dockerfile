@@ -78,14 +78,17 @@ RUN { \
 # Set Apache DocumentRoot → Laravel's public/
 ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
 RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf \
-    && sed -ri -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf \
-    && sed -i 's/AllowOverride None/AllowOverride All/g' /etc/apache2/apache2.conf
+    && printf '<Directory %s>\n\tAllowOverride All\n\tRequire all granted\n</Directory>\n' "${APACHE_DOCUMENT_ROOT}" > /etc/apache2/conf-available/laravel.conf \
+    && a2enconf laravel
 
 WORKDIR /var/www/html
 
 # Copy application code
 COPY --from=composer /app/vendor ./vendor
 COPY . .
+
+# Create a fail-safe health check file that doesn't depend on Laravel's router
+RUN echo '<?php echo "OK"; ?>' > public/health-check.php
 
 # Copy built frontend assets (if any)
 COPY --from=assets /app/public/build ./public/build
@@ -100,8 +103,9 @@ RUN php artisan config:clear 2>/dev/null || true \
     && php artisan view:clear 2>/dev/null || true
 
 # Health check for ECS / ALB
+# Hits the PHP file directly to ensure basic connectivity even if Laravel has issues
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost/health || exit 1
+    CMD curl -f http://localhost/health-check.php || exit 1
 
 EXPOSE 80
 

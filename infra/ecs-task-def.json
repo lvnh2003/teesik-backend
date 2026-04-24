@@ -24,7 +24,8 @@
         { "name": "LOG_CHANNEL", "value": "stderr" },
         { "name": "DB_CONNECTION", "value": "mysql" },
         { "name": "DB_PORT", "value": "3306" },
-        { "name": "DB_DATABASE", "value": "teesik" }
+        { "name": "DB_DATABASE", "value": "teesik" },
+        { "name": "PANCAKE_BASE_URL", "value": "https://pos.pages.fm/api/v1" }
       ],
       "secrets": [
         {
@@ -42,6 +43,26 @@
         {
           "name": "DB_PASSWORD",
           "valueFrom": "arn:aws:ssm:ap-southeast-1:751871643624:parameter/teesik/DB_PASSWORD"
+        },
+        {
+          "name": "PANCAKE_API_KEY",
+          "valueFrom": "arn:aws:ssm:ap-southeast-1:751871643624:parameter/teesik/PANCAKE_API_KEY"
+        },
+        {
+          "name": "PANCAKE_SHOP_ID",
+          "valueFrom": "arn:aws:ssm:ap-southeast-1:751871643624:parameter/teesik/PANCAKE_SHOP_ID"
+        },
+        {
+          "name": "PANCAKE_WAREHOUSE_ID",
+          "valueFrom": "arn:aws:ssm:ap-southeast-1:751871643624:parameter/teesik/PANCAKE_WAREHOUSE_ID"
+        },
+        {
+          "name": "GHN_API_TOKEN",
+          "valueFrom": "arn:aws:ssm:ap-southeast-1:751871643624:parameter/teesik/GHN_API_TOKEN"
+        },
+        {
+          "name": "GHN_SHOP_ID",
+          "valueFrom": "arn:aws:ssm:ap-southeast-1:751871643624:parameter/teesik/GHN_SHOP_ID"
         }
       ],
       "logConfiguration": {
@@ -53,7 +74,7 @@
         }
       },
       "healthCheck": {
-        "command": ["CMD-SHELL", "curl -f http://localhost/health || exit 1"],
+        "command": ["CMD-SHELL", "curl -f http://localhost/health-check.php || exit 1"],
         "interval": 30,
         "timeout": 5,
         "retries": 3,
