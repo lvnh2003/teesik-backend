@@ -11,12 +11,13 @@
 FROM composer:2 AS composer
 
 WORKDIR /app
-COPY composer.json composer.lock ./
-RUN composer update \
+COPY composer.json ./
+RUN composer install \
     --no-dev \
     --no-scripts \
+    --no-interaction \
     --prefer-dist \
-    --ignore-platform-req=php+ \
+    --ignore-platform-reqs \
     && composer dump-autoload --optimize --no-dev
 
 COPY . .
