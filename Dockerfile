@@ -12,10 +12,9 @@ FROM composer:2 AS composer
 
 WORKDIR /app
 COPY composer.json composer.lock ./
-RUN composer install \
+RUN composer update \
     --no-dev \
     --no-scripts \
-    --no-autoloader \
     --prefer-dist \
     --ignore-platform-req=php+ \
     && composer dump-autoload --optimize --no-dev
