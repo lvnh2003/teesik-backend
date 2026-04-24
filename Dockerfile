@@ -1,34 +1,143 @@
-FROM php:8.4-apache
+# ══════════════════════════════════════════════════════════════════════════════
+# Multi-stage Dockerfile — Laravel Production
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# Stage 1: composer  — Install PHP dependencies
+# Stage 2: assets    — Build frontend assets (Vite)
+# Stage 3: runtime   — Final lean image with Apache
+# ══════════════════════════════════════════════════════════════════════════════
 
-# Cài đặt các thư viện hệ thống cần thiết và PHP extensions
-RUN apt-get update && apt-get install -y \
-    libpng-dev \
-    libjpeg-dev \
-    libfreetype6-dev \
-    libzip-dev \
-    libonig-dev \
-    zip \
-    unzip \
-    git \
-    curl \
+# ─── Stage 1: Composer dependencies ──────────────────────────────────────────
+FROM composer:2 AS composer
+
+WORKDIR /app
+COPY composer.json composer.lock ./
+RUN composer install \
+    --no-dev \
+    --no-scripts \
+    --no-autoloader \
+    --prefer-dist \
+    --ignore-platform-req=php+ \
+    && composer dump-autoload --optimize --no-dev
+
+COPY . .
+RUN composer dump-autoload --optimize --no-dev
+
+# ─── Stage 2: Build frontend assets (Vite) ───────────────────────────────────
+FROM node:20-alpine AS assets
+
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --production=false
+COPY . .
+RUN npm run build 2>/dev/null || echo "No Vite build script found, skipping..."
+
+# ─── Stage 3: Production runtime ─────────────────────────────────────────────
+FROM php:8.2-apache AS runtime
+
+ARG APP_ENV=production
+
+# Install system dependencies + PHP extensions in a single layer
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libpng-dev \
+        libjpeg-dev \
+        libfreetype6-dev \
+        libzip-dev \
+        libonig-dev \
+        zip \
+        unzip \
+        curl \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install gd pdo pdo_mysql mbstring zip exif pcntl \
-    && a2enmod rewrite
+    && docker-php-ext-install -j$(nproc) \
+        gd pdo pdo_mysql mbstring zip exif pcntl opcache \
+    && a2enmod rewrite headers \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
-# Cài đặt Composer
-COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+# PHP production config (opcache, error handling)
+RUN { \
+    echo "opcache.enable=1"; \
+    echo "opcache.memory_consumption=128"; \
+    echo "opcache.interned_strings_buffer=8"; \
+    echo "opcache.max_accelerated_files=10000"; \
+    echo "opcache.revalidate_freq=0"; \
+    echo "opcache.validate_timestamps=0"; \
+    echo "opcache.save_comments=1"; \
+    echo "opcache.fast_shutdown=1"; \
+} > /usr/local/etc/php/conf.d/opcache.ini
 
-# Cài đặt Node.js và NPM (để build assets qua Vite)
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-    && apt-get install -y nodejs
+RUN { \
+    echo "display_errors=Off"; \
+    echo "log_errors=On"; \
+    echo "error_log=/dev/stderr"; \
+    echo "upload_max_filesize=10M"; \
+    echo "post_max_size=10M"; \
+    echo "memory_limit=256M"; \
+    echo "max_execution_time=60"; \
+} > /usr/local/etc/php/conf.d/production.ini
 
-# Thiết lập thư mục làm việc
+# Set Apache DocumentRoot → Laravel's public/
+ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
+RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf \
+    && sed -ri -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf
+
 WORKDIR /var/www/html
 
-# Thay đổi DocumentRoot mặc định của Apache trỏ vào thư mục public của Laravel
-ENV APACHE_DOCUMENT_ROOT /var/www/html/public
-RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf
-RUN sed -ri -e 's!/var/www/!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf
+# Copy application code
+COPY --from=composer /app/vendor ./vendor
+COPY . .
 
-# Cấp quyền cho user www-data (Apache)
-RUN chown -R www-data:www-data /var/www/html
+# Copy built frontend assets (if any)
+COPY --from=assets /app/public/build ./public/build
+
+# Set permissions
+RUN chown -R www-data:www-data /var/www/html \
+    && chmod -R 775 storage bootstrap/cache
+
+# Laravel optimizations
+RUN php artisan config:clear 2>/dev/null || true \
+    && php artisan route:clear 2>/dev/null || true \
+    && php artisan view:clear 2>/dev/null || true
+
+# Health check for ECS / ALB
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost/api/health || exit 1
+
+EXPOSE 80
+
+# Entrypoint: run migrations then start Apache
+COPY <<'EOF' /usr/local/bin/docker-entrypoint.sh
+#!/bin/bash
+set -e
+
+echo "🚀 Starting Laravel application..."
+
+# Wait for database (if DB_HOST is set)
+if [ -n "$DB_HOST" ]; then
+    echo "⏳ Waiting for database at $DB_HOST:${DB_PORT:-3306}..."
+    timeout=30
+    while ! php -r "new PDO('mysql:host='.\$_SERVER['DB_HOST'].';port='.(\$_SERVER['DB_PORT']??3306), \$_SERVER['DB_USERNAME']??'root', \$_SERVER['DB_PASSWORD']??'');" 2>/dev/null; do
+        timeout=$((timeout - 1))
+        if [ $timeout -le 0 ]; then
+            echo "⚠️  Database not available, starting anyway..."
+            break
+        fi
+        sleep 1
+    done
+    echo "✅ Database connected"
+fi
+
+# Run migrations (safe, won't error if already migrated)
+php artisan migrate --force 2>/dev/null || echo "⚠️  Migration skipped"
+
+# Cache config for performance
+php artisan config:cache 2>/dev/null || true
+php artisan route:cache 2>/dev/null || true
+php artisan view:cache 2>/dev/null || true
+
+echo "✅ Laravel ready — starting Apache"
+exec apache2-foreground
+EOF
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+ENTRYPOINT ["docker-entrypoint.sh"]

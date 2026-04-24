@@ -1,0 +1,64 @@
+{
+  "family": "teesik-backend-task",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::751871643624:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::751871643624:role/ecsTaskRole",
+  "containerDefinitions": [
+    {
+      "name": "teesik-backend",
+      "image": "751871643624.dkr.ecr.ap-southeast-1.amazonaws.com/teesik-backend:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 80,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        { "name": "APP_ENV", "value": "production" },
+        { "name": "APP_DEBUG", "value": "false" },
+        { "name": "APP_URL", "value": "https://api.teesik.store" },
+        { "name": "LOG_CHANNEL", "value": "stderr" },
+        { "name": "DB_CONNECTION", "value": "mysql" },
+        { "name": "DB_PORT", "value": "3306" },
+        { "name": "DB_DATABASE", "value": "teesik" }
+      ],
+      "secrets": [
+        {
+          "name": "APP_KEY",
+          "valueFrom": "arn:aws:ssm:ap-southeast-1:751871643624:parameter/teesik/APP_KEY"
+        },
+        {
+          "name": "DB_HOST",
+          "valueFrom": "arn:aws:ssm:ap-southeast-1:751871643624:parameter/teesik/DB_HOST"
+        },
+        {
+          "name": "DB_USERNAME",
+          "valueFrom": "arn:aws:ssm:ap-southeast-1:751871643624:parameter/teesik/DB_USERNAME"
+        },
+        {
+          "name": "DB_PASSWORD",
+          "valueFrom": "arn:aws:ssm:ap-southeast-1:751871643624:parameter/teesik/DB_PASSWORD"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/teesik-backend",
+          "awslogs-region": "ap-southeast-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "healthCheck": {
+        "command": ["CMD-SHELL", "curl -f http://localhost/api/health || exit 1"],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 60
+      }
+    }
+  ]
+}
