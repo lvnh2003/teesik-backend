@@ -11,7 +11,7 @@
 FROM composer:2 AS composer
 
 WORKDIR /app
-COPY composer.json ./
+COPY composer.json composer.lock ./
 RUN composer install \
     --no-dev \
     --no-scripts \
@@ -127,7 +127,27 @@ if [ -n "$DB_HOST" ]; then
 fi
 
 # Run migrations (safe, won't error if already migrated)
-php artisan migrate --force 2>/dev/null || echo "⚠️  Migration skipped"
+echo "📂 Running migrations..."
+php artisan migrate --force
+
+# Optional: Run seeds if DB_SEED is set to true
+if [ "$DB_SEED" = "true" ]; then
+    echo "🌱 Seeding database..."
+    php artisan db:seed --force
+fi
+
+# Ensure Passport keys exist (if missing)
+if [ ! -f storage/oauth-private.key ]; then
+    echo "🔑 Generating Passport keys..."
+    php artisan passport:keys --quiet
+fi
+
+# Ensure Passport clients exist (if missing)
+# This checks if the oauth_clients table exists and is empty
+if php artisan tinker --execute="echo DB::table('oauth_clients')->count();" 2>/dev/null | grep -q "^0$"; then
+    echo "🛡️  Installing Passport clients..."
+    php artisan passport:install --no-interaction
+fi
 
 # Cache config for performance
 php artisan config:cache 2>/dev/null || true

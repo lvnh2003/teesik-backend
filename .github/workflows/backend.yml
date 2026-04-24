@@ -65,7 +65,7 @@ jobs:
           restore-keys: composer-
 
       - name: Install dependencies
-        run: composer update --no-interaction --prefer-dist --optimize-autoloader --ignore-platform-req=php+
+        run: composer install --no-interaction --prefer-dist --optimize-autoloader --ignore-platform-req=php+
 
       - name: Prepare Laravel environment
         run: |

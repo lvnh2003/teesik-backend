@@ -1,0 +1,17 @@
+.git
+.github
+.claude
+node_modules
+vendor
+storage/*.key
+.env
+.env.*
+! .env.example
+public/build
+public/storage
+bootstrap/cache/*
+tests
+Dockerfile
+docker-compose.yml
+nginx
+infra
