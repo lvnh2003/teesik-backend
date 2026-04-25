@@ -141,31 +141,18 @@ if [ "$DB_SEED" = "true" ]; then
     php artisan db:seed --force
 fi
 
-# Ensure Passport keys exist (if missing)
-if [ ! -f storage/oauth-private.key ]; then
-    if [ ! -z "$PASSPORT_PRIVATE_KEY" ]; then
-        echo "Setting up Passport private key..."
-        printf "%b" "$PASSPORT_PRIVATE_KEY" > storage/oauth-private.key
-        chown www-data:www-data storage/oauth-private.key
-        chmod 600 storage/oauth-private.key
-    fi
-    if [ ! -z "$PASSPORT_PUBLIC_KEY" ]; then
-        echo "Setting up Passport public key..."
-        printf "%b" "$PASSPORT_PUBLIC_KEY" > storage/oauth-public.key
-        chown www-data:www-data storage/oauth-public.key
-        chmod 600 storage/oauth-public.key
-    fi
-fi
-
-# Ensure storage and bootstrap/cache are writable
-chown -R www-data:www-data storage bootstrap/cache
-chmod -R 775 storage bootstrap/cache
-
-if [ ! -f storage/oauth-private.key ]; then
-    echo "🔑 Generating Passport keys..."
-    php artisan passport:keys --quiet
+    # Generate Passport RSA keys (always regenerate for consistency)
+    echo "🔑 Generating Passport RSA keys..."
+    php artisan passport:keys --force --quiet
     chown www-data:www-data storage/oauth-*.key 2>/dev/null || true
-fi
+    chmod 600 storage/oauth-*.key 2>/dev/null || true
+
+    # Verify key validity
+    if openssl rsa -in storage/oauth-private.key -check -noout > /dev/null 2>&1; then
+        echo "✅ Passport private key is valid"
+    else
+        echo "❌ ERROR: Passport private key is invalid!"
+    fi
 
 # Ensure Passport clients exist (if missing)
 # This checks if the oauth_clients table exists and is empty
