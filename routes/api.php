@@ -40,14 +40,7 @@ Route::prefix('v1')->group(function () {
     Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
 
     // Route bảo vệ bằng token
-    Route::middleware('auth:api')->get('/me', function (Request $request) {
-        return response()->json([
-            'success' => true,
-            'data' => [
-                'user' => $request->user(),
-            ],
-        ]);
-    });
+    Route::middleware('auth:api')->get('/me', [UserController::class, 'me']);
     Route::middleware('auth:api')->put('/auth/profile', [AuthController::class, 'updateProfile']);
 
     // Cart & Checkout
