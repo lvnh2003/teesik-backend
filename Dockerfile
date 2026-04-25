@@ -143,6 +143,19 @@ fi
 
 # Ensure Passport keys exist (if missing)
 if [ ! -f storage/oauth-private.key ]; then
+    if [ -n "$PASSPORT_PRIVATE_KEY" ]; then
+        echo "🔑 Writing Passport private key from environment..."
+        echo -e "$PASSPORT_PRIVATE_KEY" > storage/oauth-private.key
+        chmod 600 storage/oauth-private.key
+    fi
+    if [ -n "$PASSPORT_PUBLIC_KEY" ]; then
+        echo "🔑 Writing Passport public key from environment..."
+        echo -e "$PASSPORT_PUBLIC_KEY" > storage/oauth-public.key
+        chmod 644 storage/oauth-public.key
+    fi
+fi
+
+if [ ! -f storage/oauth-private.key ]; then
     echo "🔑 Generating Passport keys..."
     php artisan passport:keys --quiet
 fi
@@ -158,6 +171,11 @@ fi
 php artisan config:cache 2>/dev/null || true
 php artisan route:cache 2>/dev/null || true
 php artisan view:cache 2>/dev/null || true
+
+if [ $# -gt 0 ]; then
+    echo "🛠️ Running custom command: $@"
+    exec "$@"
+fi
 
 echo "✅ Laravel ready — starting Apache"
 exec apache2-foreground
