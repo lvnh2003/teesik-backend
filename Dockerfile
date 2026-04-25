@@ -143,19 +143,23 @@ fi
 
 # Ensure Passport keys exist (if missing)
 if [ ! -f storage/oauth-private.key ]; then
-    if [ -n "$PASSPORT_PRIVATE_KEY" ]; then
-        echo "🔑 Writing Passport private key from environment..."
-        echo "$PASSPORT_PRIVATE_KEY" | awk '{gsub(/\\n/,"\n")}1' > storage/oauth-private.key
+    if [ ! -z "$PASSPORT_PRIVATE_KEY" ]; then
+        echo "Setting up Passport private key..."
+        printf "%b" "$PASSPORT_PRIVATE_KEY" > storage/oauth-private.key
         chown www-data:www-data storage/oauth-private.key
         chmod 600 storage/oauth-private.key
     fi
-    if [ -n "$PASSPORT_PUBLIC_KEY" ]; then
-        echo "🔑 Writing Passport public key from environment..."
-        echo "$PASSPORT_PUBLIC_KEY" | awk '{gsub(/\\n/,"\n")}1' > storage/oauth-public.key
+    if [ ! -z "$PASSPORT_PUBLIC_KEY" ]; then
+        echo "Setting up Passport public key..."
+        printf "%b" "$PASSPORT_PUBLIC_KEY" > storage/oauth-public.key
         chown www-data:www-data storage/oauth-public.key
-        chmod 644 storage/oauth-public.key
+        chmod 600 storage/oauth-public.key
     fi
 fi
+
+# Ensure storage and bootstrap/cache are writable
+chown -R www-data:www-data storage bootstrap/cache
+chmod -R 775 storage bootstrap/cache
 
 if [ ! -f storage/oauth-private.key ]; then
     echo "🔑 Generating Passport keys..."
