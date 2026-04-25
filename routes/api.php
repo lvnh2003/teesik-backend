@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Route;
 */
 
 // Health check (outside v1 prefix for monitoring)
-Route::get('/health', [\App\Http\Controllers\HealthController::class]);
+Route::get('/health', \App\Http\Controllers\HealthController::class);
 
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\Admin\ProductController;
