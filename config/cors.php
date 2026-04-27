@@ -15,11 +15,15 @@ return [
     |
     */
 
-    'paths' => ['*'],
+    'paths' => ['api/*', 'sanctum/csrf-cookie'],
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => ['*'],
+    'allowed_origins' => [
+        'https://teesik.store',
+        'https://www.teesik.store',
+        'http://localhost:3000', // For local development
+    ],
 
     'allowed_origins_patterns' => [],
 
@@ -27,8 +31,7 @@ return [
 
     'exposed_headers' => [],
 
-    'max_age' => 0,
+    'max_age' => 86400,
 
-    'supports_credentials' => false,
-
+    'supports_credentials' => true,
 ];

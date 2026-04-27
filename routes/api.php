@@ -36,8 +36,8 @@ use App\Http\Controllers\ProductController as PublicProductController;
 Route::prefix('v1')->group(function () {
 
     // Auth routes with rate limiting
-    Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:10,1');
-    Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
+    Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:auth');
+    Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:auth');
 
     // Route bảo vệ bằng token
     Route::middleware('auth:api')->get('/me', [UserController::class, 'me']);
