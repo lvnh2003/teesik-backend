@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\Route;
 Route::get('/health', \App\Http\Controllers\HealthController::class);
 
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\UserController;
 use App\Http\Controllers\Admin\ProductController;
 use App\Http\Controllers\Admin\CategoryController;
 use App\Http\Controllers\Admin\CustomerController;

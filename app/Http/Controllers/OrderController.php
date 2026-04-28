@@ -102,16 +102,16 @@ class OrderController extends Controller
                 if ($voucher) {
                     $minOrder = $voucher['condition_amount'] ?? ($voucher['min_order_value'] ?? 0);
                     if ($total >= $minOrder) {
-                        $isPercent = $voucher['is_use_percent'] ?? ($voucher['is_percent'] ?? false);
+                        $isPercent = $voucher['is_use_percent'] ?? ($voucher['promo_code_info']['is_percent'] ?? ($voucher['is_percent'] ?? false));
                         if ($isPercent) {
-                            $percent = $voucher['value_discount'] ?? 0;
+                            $percent = $voucher['value_discount'] ?? ($voucher['promo_code_info']['discount'] ?? 0);
                             $discountAmount = ($total * $percent) / 100;
-                            $maxDiscount = $voucher['max_amount_discount'] ?? ($voucher['max_discount'] ?? 0);
+                            $maxDiscount = $voucher['max_amount_discount'] ?? ($voucher['promo_code_info']['max_discount_by_percent'] ?? ($voucher['max_discount'] ?? 0));
                             if ($maxDiscount > 0 && $discountAmount > $maxDiscount) {
                                 $discountAmount = $maxDiscount;
                             }
                         } else {
-                            $discountAmount = $voucher['value_discount'] ?? 0;
+                            $discountAmount = $voucher['value_discount'] ?? ($voucher['promo_code_info']['discount'] ?? 0);
                         }
                         
                         if ($discountAmount > $total) $discountAmount = $total;
@@ -121,23 +121,24 @@ class OrderController extends Controller
         }
 
         $finalTotal = $total - $discountAmount;
+        $paymentMethod = strtoupper($request->input('payment_method', 'COD'));
 
         // Prepare data for Pancake
         $orderData = [
             'customer_name' => $request->input('customer_name'),
-            'customer_email' => $request->input('customer_email') ?? ($user?->email ?? ''), // ← pass email
+            'customer_email' => $request->input('customer_email') ?? ($user?->email ?? ''),
             'customer_phone' => $request->input('customer_phone'),
             'shipping_address' => $request->input('address'),
             'items' => collect($items)->map(function ($item) {
                 return [
-                    'variation_id' => $item['variation_id'], // Rely strictly on variation_id
+                    'variation_id' => $item['variation_id'],
                     'product_id' => $item['product_id'],
                     'quantity' => $item['quantity'],
                     'price' => $item['price'] ?? 0,
                 ];
             })->toArray(),
             'total_amount' => $finalTotal,
-            'note' => ($voucherCode ? "Sử dụng ưu đãi: {$voucherCode}. " : "") . $request->input('note', ''),
+            'note' => "PTTT: {$paymentMethod}. " . ($voucherCode ? "Sử dụng ưu đãi: {$voucherCode}. " : "") . $request->input('note', ''),
         ];
 
         $pancakeOrder = $this->pancakeService->createOrder($orderData);

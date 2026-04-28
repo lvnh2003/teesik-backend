@@ -22,7 +22,8 @@ return [
     'allowed_origins' => [
         'https://teesik.store',
         'https://www.teesik.store',
-        'http://localhost:3000', // For local development
+        'http://localhost:3000',
+        'http://127.0.0.1:3000',
     ],
 
     'allowed_origins_patterns' => [],
