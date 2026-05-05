@@ -22,6 +22,10 @@ class PancakeProductService extends PancakeClient
                 $queryParams['search'] = $search;
             }
 
+            if ($category_id) {
+                $queryParams['category_id'] = $category_id;
+            }
+
             $response = Http::get("{$this->baseUrl}/shops/{$this->shopId}/products/variations", $queryParams);
 
             if ($response->failed()) {
