@@ -8,133 +8,70 @@ use Illuminate\Pagination\LengthAwarePaginator;
 
 class PancakeProductService extends PancakeClient
 {
-    public function getProducts($page = 1, $limit = 30, $search = null, $category_id = null)
+    public function getProducts($page = 1, $limit = 8, $search = null, $category_id = null)
     {
-        $cacheKey = "pancake_products_{$page}_{$limit}_{$search}_{$category_id}";
-        return Cache::remember($cacheKey, config('pancake.cache_ttl', 600), function () use ($page, $limit, $search, $category_id) {
-            $queryParams = [
+        $cacheKey = "pancake_products_master_v1";
+        $rawData = Cache::remember($cacheKey, config('pancake.cache_ttl', 600), function () {
+            $response = Http::get("{$this->baseUrl}/shops/{$this->shopId}/products", [
                 'api_key' => $this->apiKey,
-                'page_number' => $page,
-                'page_size' => $limit,
-            ];
-
-            if ($search) {
-                $queryParams['search'] = $search;
-            }
-
-            if ($category_id) {
-                $queryParams['category_id'] = $category_id;
-            }
-
-            $response = Http::get("{$this->baseUrl}/shops/{$this->shopId}/products/variations", $queryParams);
+                'page_size' => 1000,
+            ]);
 
             if ($response->failed()) {
-                throw new \Exception('Failed to fetch products from Pancake: ' . $response->body());
+                \Log::error('Pancake API error: ' . $response->body());
+                return [];
             }
 
             $data = $response->json();
-            $variations = collect($data['data'] ?? []);
-
-            // Group variations by product_id
-            $grouped = $variations->groupBy('product_id');
-
-            $products = $grouped->map(function ($vars, $productId) {
-                // Use the first variation to get product-level info (or the 'product' field if available)
-                $firstVar = $vars->first();
-                $productInfo = $firstVar['product'] ?? [];
-
-                $name = $productInfo['name'] ?? ($firstVar['name'] ?? 'Unknown Product');
-
-                // Aggregate variations
-                $mappedVariations = $vars->map(function ($variant) {
-                    // Map fields to attributes key-value pair
-                    $attributes = [];
-                    if (isset($variant['fields']) && is_array($variant['fields'])) {
-                        foreach ($variant['fields'] as $field) {
-                            if (isset($field['name']) && isset($field['value'])) {
-                                $attributes[$field['name']] = $field['value'];
-                            }
-                        }
-                    }
-
-                    // Transform variation images
-                    $varImages = $variant['images'] ?? [];
-                    $varImages = collect($varImages)->map(function ($img) {
-                        return is_string($img) ? ['image_path' => $img, 'id' => null] : $img;
-                    })->toArray();
-
-                    return [
-                        'id' => $variant['id'] ?? null,
-                        'sku' => $variant['display_id'] ?? ($variant['barcode'] ?? ''),
-                        'price' => $variant['retail_price'] ?? ($variant['price'] ?? 0),
-                        'original_price' => $variant['original_price'] ?? 0,
-                        'stock_quantity' => $variant['remain_quantity'] ?? 0,
-                        'weight' => $variant['weight'] ?? 0,
-                        'attributes' => $attributes,
-                        'images' => $varImages,
-                        'image' => null,
-                        'imagePreviewUrl' => '',
-                        'product_id' => $variant['product_id'] ?? null,
-                        'isDelete' => false,
-                    ];
-                })->values()->toArray();
-
-                // Product Images: Try to get from product info, or fallback to first variation's images
-                $images = $productInfo['image'] ? [$productInfo['image']] : [];
-                if (empty($images)) {
-                    $images = $firstVar['images'] ?? [];
-                }
-
-                // Normalized images
-                $images = collect($images)->map(function ($img) {
-                    return is_string($img) ? ['image_path' => $img, 'id' => null] : $img;
-                })->toArray();
-
-                $categories = $productInfo['categories'] ?? [];
-                $category = isset($categories[0]) ? [
-                    'id' => $categories[0]['id'],
-                    'name' => $categories[0]['name'] ?? 'Unknown',
-                    'slug' => \Illuminate\Support\Str::slug($categories[0]['name'] ?? ''),
-                ] : null;
-
-                // Calculate aggregated stock
-                $totalStock = $vars->sum('remain_quantity');
-
-                // Price range or first price
-                $price = $firstVar['retail_price'] ?? 0;
-
-                return [
-                    'id' => $productId,
-                    'name' => $name,
-                    'sku' => $productInfo['display_id'] ?? ($productInfo['barcode'] ?? ''),
-                    'price' => $price,
-                    'original_price' => $productInfo['original_price'] ?? 0,
-                    'quantity' => $totalStock,
-                    'stock_quantity' => $totalStock, // Ensure compatibility
-                    'images' => $images,
-                    'category_id' => $categories[0]['id'] ?? null,
-                    'category' => $category,
-                    'custom_id' => $productInfo['custom_id'] ?? null,
-                    'tags' => $productInfo['tags'] ?? [],
-                    'note' => $productInfo['note_product'] ?? '',
-                    'is_sell_negative' => $productInfo['is_sell_negative'] ?? false,
-                    'hide_config_product' => $productInfo['hide_config_product'] ?? false,
-                    'created_at' => $productInfo['inserted_at'] ?? ($firstVar['inserted_at'] ?? null),
-                    'updated_at' => null,
-                    'variations' => $mappedVariations,
-                ];
-            })->values();
-
-            $total = $data['total_entries'] ?? 0;
-
-            return new LengthAwarePaginator(
-                $products,
-                $total,
-                $limit,
-                $page,
-                ['path' => url('api/admin/products')]
-            );
+            return $data['data'] ?? [];
         });
+
+        $allProducts = collect($rawData);
+
+        // Filter and Map
+        $filtered = $allProducts;
+        
+        if ($search) {
+            $searchTerm = strtolower($search);
+            $filtered = $filtered->filter(function ($item) use ($searchTerm) {
+                $name = strtolower($item['name'] ?? '');
+                $sku = strtolower($item['display_id'] ?? ($item['barcode'] ?? ''));
+                return str_contains($name, $searchTerm) || str_contains($sku, $searchTerm);
+            });
+        }
+
+        if ($category_id) {
+            $filtered = $filtered->filter(function ($item) use ($category_id) {
+                $categories = $item['categories'] ?? [];
+                return collect($categories)->contains('id', $category_id);
+            });
+        }
+
+        // Map to our format, ensure uniqueness by ID
+        $mapped = $filtered->map(function ($item) use ($category_id) {
+            return $this->mapProduct($item, $category_id);
+        })->unique('id')->values();
+
+        // Paginate
+        $total = $mapped->count();
+        $offset = ($page - 1) * $limit;
+        $items = $mapped->slice($offset, $limit)->values();
+
+        return new LengthAwarePaginator(
+            $items,
+            $total,
+            $limit,
+            $page,
+            [
+                'path' => request()->url(), 
+                'query' => request()->query(),
+                'debug' => [
+                    'raw_count' => count($rawData),
+                    'mapped_count' => $mapped->count(),
+                    'filtered_count' => $filtered->count(),
+                ]
+            ]
+        );
     }
 
     public function getProduct($id)
@@ -261,7 +198,7 @@ class PancakeProductService extends PancakeClient
         ];
     }
 
-    protected function mapProduct($pancakeProduct)
+    protected function mapProduct($pancakeProduct, $targetCategoryId = null)
     {
         $productBase = $pancakeProduct['product'] ?? $pancakeProduct;
 
@@ -280,9 +217,14 @@ class PancakeProductService extends PancakeClient
             }
         }
 
-        $price = $pancakeProduct['retail_price'] ?? ($pancakeProduct['price'] ?? 0);
-        if (empty($price) && $firstVar) {
-            $price = $firstVar['retail_price'] ?? ($firstVar['price'] ?? 0);
+        $price = (int) ($pancakeProduct['retail_price'] ?? ($pancakeProduct['price'] ?? 0));
+        if ($price === 0 && $firstVar) {
+            $price = (int) ($firstVar['retail_price'] ?? ($firstVar['price'] ?? 0));
+        }
+        
+        $originalPrice = (int) ($pancakeProduct['original_price'] ?? 0);
+        if ($originalPrice === 0 && $firstVar) {
+            $originalPrice = (int) ($firstVar['original_price'] ?? 0);
         }
 
         $images = $pancakeProduct['images'] ?? [];
@@ -296,10 +238,19 @@ class PancakeProductService extends PancakeClient
         })->toArray();
 
         $categories = $productBase['categories'] ?? [];
-        $category = isset($categories[0]) ? [
-            'id' => $categories[0]['id'],
-            'name' => $categories[0]['name'] ?? 'Unknown',
-            'slug' => \Illuminate\Support\Str::slug($categories[0]['name'] ?? ''),
+        
+        // Find the matching category if a filter is applied, otherwise use the first one
+        $matchingCategory = null;
+        if ($targetCategoryId) {
+            $matchingCategory = collect($categories)->first(fn($c) => (string)$c['id'] === (string)$targetCategoryId);
+        }
+        
+        $primaryCategory = $matchingCategory ?? ($categories[0] ?? null);
+        
+        $category = $primaryCategory ? [
+            'id' => $primaryCategory['id'],
+            'name' => $primaryCategory['name'] ?? 'Unknown',
+            'slug' => \Illuminate\Support\Str::slug($primaryCategory['name'] ?? ''),
         ] : null;
 
         return [
@@ -307,11 +258,10 @@ class PancakeProductService extends PancakeClient
             'name' => $name,
             'sku' => $productBase['display_id'] ?? ($productBase['barcode'] ?? ''),
             'price' => $price,
-            'original_price' => $productBase['original_price'] ?? 0,
-            'quantity' => $productBase['remain_quantity'] ?? 0,
-            'images' => $images,
-            'category_id' => $categories[0]['id'] ?? null,
+            'category_id' => $category['id'] ?? null,
+            'category_ids' => collect($categories)->pluck('id')->toArray(),
             'category' => $category,
+            'original_price' => $originalPrice,
             'custom_id' => $productBase['custom_id'] ?? null,
             'tags' => $productBase['tags'] ?? [],
             'note' => $productBase['note_product'] ?? '',

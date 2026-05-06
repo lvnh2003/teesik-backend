@@ -17,7 +17,7 @@ class ProductController extends Controller
     public function index(Request $request)
     {
         $page = $request->get('page', 1);
-        $limit = $request->get('limit', 12);
+        $limit = $request->get('per_page', $request->get('limit', 8));
         $search = $request->get('search');
         $categoryId = $request->get('category_id');
 
