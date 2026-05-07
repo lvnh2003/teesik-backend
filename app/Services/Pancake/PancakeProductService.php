@@ -102,6 +102,43 @@ class PancakeProductService extends PancakeClient
         });
     }
 
+    public function resolveVariationId($productId, $currentVariationId = null)
+    {
+        // If currentVariationId is null, default to productId for checking
+        $checkId = $currentVariationId ?? $productId;
+
+        try {
+            // First try to find in master list cache (efficient)
+            $cacheKey = "pancake_products_master_v1";
+            $rawData = Cache::get($cacheKey);
+            
+            if ($rawData) {
+                $product = collect($rawData)->first(fn($p) => $p['id'] === $productId);
+                if ($product && !empty($product['variations'])) {
+                    // If checkId is the product ID, or not found in variations, pick the first one
+                    $variationExists = collect($product['variations'])->contains('id', $checkId);
+                    if (!$variationExists || $checkId === $productId) {
+                        return $product['variations'][0]['id'];
+                    }
+                    return $checkId;
+                }
+            }
+
+            // Fallback to single product fetch (caches result)
+            $product = $this->getProduct($productId);
+            if ($product && !empty($product['variations'])) {
+                $variationExists = collect($product['variations'])->contains('id', $checkId);
+                if (!$variationExists || $checkId === $productId) {
+                    return $product['variations'][0]['id'];
+                }
+            }
+        } catch (\Exception $e) {
+            \Log::warning("Could not resolve variation for product $productId: " . $e->getMessage());
+        }
+
+        return $checkId;
+    }
+
     public function getVariations($productId)
     {
         $response = Http::get("{$this->baseUrl}/shops/{$this->shopId}/products/variations", [

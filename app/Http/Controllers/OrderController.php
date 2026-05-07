@@ -50,9 +50,16 @@ class OrderController extends Controller
 
             if ($cart && $cart->items->isNotEmpty()) {
                 $items = $cart->items->map(function ($item) {
+                    $productId = $item->product_id;
+                    $variationId = $item->product_variant_id;
+
+                    if (!$variationId || $variationId === $productId) {
+                        $variationId = $this->productService->resolveVariationId($productId, $variationId);
+                    }
+
                     return [
-                        'product_id' => $item->product_id,
-                        'variation_id' => $item->product_variant_id ?: $item->product_id,
+                        'product_id' => $productId,
+                        'variation_id' => $variationId,
                         'quantity' => (int) ($item->quantity ?? 1),
                         'price' => (float) ($item->price ?? 0),
                         'name' => $item->name ?? 'Product',
@@ -68,7 +75,12 @@ class OrderController extends Controller
                         $productId = data_get($inputItem, 'product_id') ?? data_get($inputItem, 'id');
                         if (!$productId) continue;
 
-                        $variationId = data_get($inputItem, 'variation_id') ?? data_get($inputItem, 'variant_id') ?? $productId;
+                        $variationId = data_get($inputItem, 'variation_id') ?? data_get($inputItem, 'variant_id');
+                        
+                        // Resolve valid variation_id if missing or matches product_id
+                        if (!$variationId || $variationId === $productId) {
+                            $variationId = $this->productService->resolveVariationId($productId, $variationId);
+                        }
                         
                         $items[] = [
                             'product_id' => $productId,
