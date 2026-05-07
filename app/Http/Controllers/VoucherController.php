@@ -3,18 +3,53 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use App\Services\Pancake\PancakeMarketingService;
-use Carbon\Carbon;
+use App\Services\VoucherService;
 
 class VoucherController extends Controller
 {
-    protected $marketingService;
+    protected $voucherService;
 
-    public function __construct(PancakeMarketingService $marketingService)
+    public function __construct(VoucherService $voucherService)
     {
-        $this->marketingService = $marketingService;
+        $this->voucherService = $voucherService;
     }
 
+    /**
+     * List all active vouchers for the public.
+     *
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function index()
+    {
+        try {
+            $vouchers = $this->voucherService->getActiveVouchers();
+            
+            $formattedVouchers = $vouchers->map(function ($voucher) {
+                return [
+                    'code' => $voucher['code'],
+                    'name' => $voucher['name'],
+                    'description' => $voucher['description'],
+                    'discount_value' => $voucher['discount_value'],
+                    'is_percent' => $voucher['is_percent'],
+                    'max_discount' => $voucher['max_discount'],
+                    'min_order_value' => $voucher['min_order_value'],
+                    'end_date' => $voucher['end_date'],
+                    'remaining' => $voucher['remaining'],
+                ];
+            });
+
+            return $this->successResponse($formattedVouchers);
+        } catch (\Exception $e) {
+            return $this->errorResponse('Không thể lấy danh sách mã giảm giá.', 500);
+        }
+    }
+
+    /**
+     * Validate a voucher code.
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
     public function validateVoucher(Request $request)
     {
         $request->validate([
@@ -22,84 +57,46 @@ class VoucherController extends Controller
             'cart_total' => 'required|numeric'
         ]);
 
-        $code = trim($request->code);
-        $cartTotal = $request->cart_total;
-
         try {
-            // Lấy voucher, fetch limit 100 để đủ danh sách các voucher đang có
-            $paginator = $this->marketingService->getVouchers(1, 100);
-            $vouchers = collect($paginator->items());
-            
-            // Search field in Pancake voucher might be 'code' or 'name' based on API structure. Defaults to 'code'.
-            $voucher = $vouchers->first(function ($item) use ($code) {
-                return strtolower($item['code'] ?? '') === strtolower($code) 
-                    || strtolower($item['name'] ?? '') === strtolower($code);
-            });
-
-            if (!$voucher) {
-                return $this->errorResponse('Mã giảm giá không hợp lệ hoặc đã kết thúc.', 404);
-            }
-
-            // Check if active
-            if (isset($voucher['is_activated']) && !$voucher['is_activated']) {
-                return $this->errorResponse('Mã giảm giá đã bị khóa.', 400);
-            }
-            
-            // Time range check
-            // pancake marketing service already format start_date/end_date to YYYY-MM-DDTHH:ii:ss
-            $now = Carbon::now();
-            if (!empty($voucher['start_date'])) {
-                if ($now->lt(Carbon::parse($voucher['start_date']))) {
-                    return $this->errorResponse('Mã giảm giá chưa đến thời gian sử dụng.', 400);
-                }
-            }
-            
-            if (!empty($voucher['end_date'])) {
-                if ($now->gt(Carbon::parse($voucher['end_date']))) {
-                    return $this->errorResponse('Mã giảm giá đã quá hạn.', 400);
-                }
-            }
-            
-            // Min order value (usually 'condition_amount' or 'min_order_value')
-            $minOrder = $voucher['condition_amount'] ?? ($voucher['min_order_value'] ?? 0);
-            if ($cartTotal < $minOrder) {
-                return $this->errorResponse('Chưa đạt giá trị đơn hàng tối thiểu ' . number_format($minOrder) . 'đ.', 400);
-            }
-            
-            // Calculate discount
-            $discount = 0;
-            // Pancake returns is_use_percent or promo_code_info.is_percent
-            $isPercent = $voucher['is_use_percent'] ?? ($voucher['promo_code_info']['is_percent'] ?? false);
-            
-            if ($isPercent) {
-                $percent = $voucher['value_discount'] ?? ($voucher['promo_code_info']['discount'] ?? 0);
-                $discount = ($cartTotal * $percent) / 100;
-                $maxDiscount = $voucher['max_amount_discount'] ?? ($voucher['promo_code_info']['max_discount_by_percent'] ?? 0);
-                if ($maxDiscount > 0 && $discount > $maxDiscount) {
-                    $discount = $maxDiscount;
-                }
-            } else {
-                $discount = $voucher['value_discount'] ?? ($voucher['promo_code_info']['discount'] ?? 0);
-            }
-
-            // Guard against discount larger than total
-            if ($discount > $cartTotal) {
-                $discount = $cartTotal;
-            }
+            $result = $this->voucherService->validateVoucher($request->code, $request->cart_total);
+            $voucher = $result['normalized_voucher'];
 
             return $this->successResponse([
-                'code' => $code,
-                'discount' => round($discount),
-                'is_percent' => $isPercent,
+                'code' => $result['code'],
+                'discount' => $result['discount'],
+                'is_percent' => $result['is_percent'],
                 'voucher_details' => [
-                    'name' => $voucher['name'] ?? $code,
-                    'value_discount' => $voucher['value_discount'] ?? ($voucher['promo_code_info']['discount'] ?? 0),
-                    'max_discount' => $voucher['max_amount_discount'] ?? ($voucher['promo_code_info']['max_discount_by_percent'] ?? 0)
+                    'name' => $result['name'],
+                    'discount_value' => $voucher['discount_value'],
+                    'max_discount' => $voucher['max_discount'],
+                    'min_order_value' => $voucher['min_order_value']
                 ]
             ], 'Áp dụng mã giảm giá thành công.');
 
         } catch (\Exception $e) {
-            return $this->errorResponse('Lỗi hệ thống khi kiểm tra mã giảm giá.', 500);
+            $message = $e->getMessage();
+            $statusCode = 400;
+
+            if ($message === 'Mã giảm giá không hợp lệ hoặc đã kết thúc.') {
+                $statusCode = 404;
+            }
+
+            return $this->errorResponse($message, $statusCode);
+        }
+    }
+
+    /**
+     * Refresh voucher cache.
+     *
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function refreshCache()
+    {
+        try {
+            $this->voucherService->clearCache();
+            return $this->successResponse(null, 'Làm mới danh sách mã giảm giá thành công.');
+        } catch (\Exception $e) {
+            return $this->errorResponse('Không thể làm mới danh sách mã giảm giá.', 500);
         }
     }
 }

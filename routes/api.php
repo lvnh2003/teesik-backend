@@ -14,6 +14,16 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
+// Handle CORS preflight manually as fallback
+Route::options('{any}', function (Request $request) {
+    \Log::info('OPTIONS request handled manually', ['origin' => $request->header('Origin')]);
+    return response('', 204)
+        ->header('Access-Control-Allow-Origin', $request->header('Origin') ?: '*')
+        ->header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+        ->header('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-Cart-ID, X-Origin-Verify')
+        ->header('Access-Control-Allow-Credentials', 'true');
+})->where('any', '.*');
+
 // Health check (outside v1 prefix for monitoring)
 Route::get('/health', \App\Http\Controllers\HealthController::class);
 
@@ -56,7 +66,9 @@ Route::prefix('v1')->group(function () {
     // Wishlist & Voucher
     Route::middleware('auth:api')->get('/wishlists', [\App\Http\Controllers\WishlistController::class, 'index']);
     Route::middleware('auth:api')->post('/wishlists/toggle', [\App\Http\Controllers\WishlistController::class, 'toggle']);
+    Route::get('/vouchers', [\App\Http\Controllers\VoucherController::class, 'index']);
     Route::post('/vouchers/validate', [\App\Http\Controllers\VoucherController::class, 'validateVoucher']);
+    Route::post('/vouchers/refresh', [\App\Http\Controllers\VoucherController::class, 'refreshCache']);
 
     // User Addresses
     Route::middleware('auth:api')->get('/user/addresses', [\App\Http\Controllers\UserAddressController::class, 'index']);

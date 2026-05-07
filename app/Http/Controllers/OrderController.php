@@ -5,156 +5,155 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Services\Pancake\PancakeOrderService;
 use App\Services\Pancake\PancakeProductService;
+use Carbon\Carbon;
 
 class OrderController extends Controller
 {
-    protected $pancakeService;
-    protected $productService;
+    protected $voucherService;
 
-    public function __construct(PancakeOrderService $pancakeService, PancakeProductService $productService)
-    {
+    public function __construct(
+        PancakeOrderService $pancakeService, 
+        PancakeProductService $productService,
+        \App\Services\VoucherService $voucherService
+    ) {
         $this->pancakeService = $pancakeService;
         $this->productService = $productService;
+        $this->voucherService = $voucherService;
     }
 
     public function checkout(Request $request)
     {
-        // Validate request
-        $request->validate([
-            'customer_name' => 'required|string',
-            'customer_email' => 'nullable|email',
-            'address' => 'required|string',
-            'customer_phone' => 'required|string',
-        ]);
 
-        $cartId = $request->header('X-Cart-ID');
 
-        $user = $request->user('api');
+        try {
+            // Validate request
+            $request->validate([
+                'customer_name' => 'required|string',
+                'customer_email' => 'nullable|email',
+                'address' => 'required|string',
+                'customer_phone' => 'required|string',
+            ]);
 
-        $items = [];
-        $total = 0;
-        $cart = null;
+            $cartId = $request->header('X-Cart-ID');
+            $user = $request->user('api');
 
-        if ($user) {
-            $cart = \App\Models\Cart::where('user_id', $user->id)->with('items')->first();
-        }
+            $items = [];
+            $cart = null;
 
-        if (!$cart && $cartId) {
-            $cart = \App\Models\Cart::where('cart_id', $cartId)->with('items')->first();
-        }
-
-        if ($cart) {
-            $items = $cart->items->map(function ($item) {
-                return [
-                    'product_id' => $item->product_id,
-                    'variation_id' => $item->product_variant_id, // We specifically ensured in CartController this is variation ID
-                    'quantity' => $item->quantity,
-                    'price' => $item->price,
-                    'name' => $item->name,
-                ];
-            })->toArray();
-
-            $total = $cart->items->sum(function ($item) {
-                return $item->price * $item->quantity;
-            });
-        }
-
-        // Fallback: items in request body -- re-validate prices from Pancake
-        if (empty($items)) {
-            $inputItems = $request->input('items', []);
-            if (!empty($inputItems)) {
-                $items = [];
-                foreach ($inputItems as $inputItem) {
-                    try {
-                        // Re-fetch price from Pancake to prevent price tampering
-                        $pancakeProduct = $this->productService->getProduct($inputItem['product_id']);
-                        $price = $pancakeProduct['price'] ?? 0;
-                    } catch (\Exception $e) {
-                        $price = $inputItem['price'] ?? 0; // Fallback if Pancake unavailable
-                    }
-                    $items[] = [
-                        'product_id' => $inputItem['product_id'],
-                        'variation_id' => $inputItem['variation_id'], // Explicit variation ID instead of fallback
-                        'quantity' => $inputItem['quantity'] ?? 1,
-                        'price' => $price,
-                        'name' => $inputItem['name'] ?? '',
-                    ];
-                }
-                $total = collect($items)->sum(fn($item) => $item['price'] * $item['quantity']);
-            } else {
-                return $this->errorResponse('Cart is empty', 400);
+            if ($user) {
+                $cart = \App\Models\Cart::where('user_id', $user->id)->with('items')->first();
             }
-        }
 
-        // --- VOUCHER VALIDATION ---
-        $voucherCode = $request->input('voucher_code');
-        $discountAmount = 0;
+            if (!$cart && $cartId) {
+                $cart = \App\Models\Cart::where('cart_id', $cartId)->with('items')->first();
+            }
 
-        if ($voucherCode) {
-            try {
-                $marketingService = app(\App\Services\Pancake\PancakeMarketingService::class);
-                $paginator = $marketingService->getVouchers(1, 100);
-                $vouchers = collect($paginator->items());
-                
-                $voucher = $vouchers->firstWhere('code', strtoupper($voucherCode));
-                if (!$voucher) $voucher = $vouchers->firstWhere('name', strtoupper($voucherCode));
+            if ($cart && $cart->items->isNotEmpty()) {
+                $items = $cart->items->map(function ($item) {
+                    return [
+                        'product_id' => $item->product_id,
+                        'variation_id' => $item->product_variant_id ?: $item->product_id,
+                        'quantity' => (int) ($item->quantity ?? 1),
+                        'price' => (float) ($item->price ?? 0),
+                        'name' => $item->name ?? 'Product',
+                    ];
+                })->toArray();
+            }
 
-                if ($voucher) {
-                    $minOrder = $voucher['condition_amount'] ?? ($voucher['min_order_value'] ?? 0);
-                    if ($total >= $minOrder) {
-                        $isPercent = $voucher['is_use_percent'] ?? ($voucher['promo_code_info']['is_percent'] ?? ($voucher['is_percent'] ?? false));
-                        if ($isPercent) {
-                            $percent = $voucher['value_discount'] ?? ($voucher['promo_code_info']['discount'] ?? 0);
-                            $discountAmount = ($total * $percent) / 100;
-                            $maxDiscount = $voucher['max_amount_discount'] ?? ($voucher['promo_code_info']['max_discount_by_percent'] ?? ($voucher['max_discount'] ?? 0));
-                            if ($maxDiscount > 0 && $discountAmount > $maxDiscount) {
-                                $discountAmount = $maxDiscount;
-                            }
-                        } else {
-                            $discountAmount = $voucher['value_discount'] ?? ($voucher['promo_code_info']['discount'] ?? 0);
-                        }
+            // Fallback: items in request body if cart is empty
+            if (empty($items)) {
+                $inputItems = $request->input('items', []);
+                if (!empty($inputItems) && is_array($inputItems)) {
+                    foreach ($inputItems as $inputItem) {
+                        $productId = data_get($inputItem, 'product_id') ?? data_get($inputItem, 'id');
+                        if (!$productId) continue;
+
+                        $variationId = data_get($inputItem, 'variation_id') ?? data_get($inputItem, 'variant_id') ?? $productId;
                         
-                        if ($discountAmount > $total) $discountAmount = $total;
+                        $items[] = [
+                            'product_id' => $productId,
+                            'variation_id' => $variationId,
+                            'quantity' => (int) data_get($inputItem, 'quantity', 1),
+                            'price' => (float) data_get($inputItem, 'price', 0),
+                            'name' => data_get($inputItem, 'name', 'Product'),
+                        ];
                     }
                 }
-            } catch (\Exception $e) {}
+            }
+
+            if (empty($items)) {
+                return $this->errorResponse('Giỏ hàng trống hoặc thông tin sản phẩm không hợp lệ', 400);
+            }
+
+            $subtotal = collect($items)->sum(fn($item) => $item['price'] * $item['quantity']);
+
+            // --- VOUCHER VALIDATION ---
+            $voucherCode = $request->input('voucher_code') ?? $request->input('voucherCode') ?? $request->input('voucher');
+            $discountAmount = 0;
+
+            if ($voucherCode) {
+                try {
+                    $result = $this->voucherService->validateVoucher($voucherCode, $subtotal);
+                    $discountAmount = $result['discount'];
+                    $voucherCode = $result['code']; // Use the normalized code from service
+                } catch (\Exception $e) {
+                    \Log::warning('Voucher validation failed during checkout: ' . $e->getMessage());
+                    // Fallback to frontend discount if validation fails but code was provided
+                    $discountAmount = (float) ($request->input('discount_amount') ?? $request->input('discountAmount') ?? 0);
+                }
+            }
+
+            // Guard against discount larger than total
+            $discountAmount = round($discountAmount);
+            if ($discountAmount > $subtotal) {
+                $discountAmount = $subtotal;
+            }
+
+            // Use frontend discount if backend validation failed but voucher exists
+            if ($discountAmount == 0 && $voucherCode) {
+                $discountAmount = (float) ($request->input('discount_amount') ?? $request->input('discountAmount') ?? 0);
+            }
+
+            $shippingFee = (float) $request->input('shipping_fee', 0);
+            $paymentMethod = strtoupper($request->input('payment_method', 'COD'));
+
+            // Prepare data for Pancake
+            $orderData = [
+                'customer_name' => $request->input('customer_name'),
+                'customer_email' => $request->input('customer_email') ?: ($user?->email ?? ''),
+                'customer_phone' => $request->input('customer_phone'),
+                'shipping_address' => $request->input('address'),
+                'items' => $items,
+                'subtotal' => $subtotal,
+                'shipping_fee' => $shippingFee,
+                'discount_amount' => $discountAmount,
+                'payment_method' => $paymentMethod,
+                'note' => "PTTT: {$paymentMethod}. " . ($voucherCode ? "Sử dụng ưu đãi: {$voucherCode}. Giảm: " . number_format($discountAmount, 0, ',', '.') . "đ. " : "") . $request->input('note', ''),
+            ];
+
+            $pancakeOrder = $this->pancakeService->createOrder($orderData);
+
+            // Clear cart from database
+            if ($cart) {
+                $cart->items()->delete();
+                $cart->delete();
+            }
+            
+            // If user is logged in, double check and clear any other carts
+            if ($user) {
+                \App\Models\Cart::where('user_id', $user->id)->delete();
+            }
+
+            // Clear cache
+            \Illuminate\Support\Facades\Cache::forget('pancake_products_master_v1');
+
+            return $this->createdResponse($pancakeOrder, 'Order placed successfully');
+        } catch (\Exception $e) {
+            \Log::error('Checkout API Error: ' . $e->getMessage());
+            return $this->errorResponse('Checkout failed: ' . $e->getMessage(), 500);
         }
-
-        $finalTotal = $total - $discountAmount;
-        $paymentMethod = strtoupper($request->input('payment_method', 'COD'));
-
-        // Prepare data for Pancake
-        $orderData = [
-            'customer_name' => $request->input('customer_name'),
-            'customer_email' => $request->input('customer_email') ?? ($user?->email ?? ''),
-            'customer_phone' => $request->input('customer_phone'),
-            'shipping_address' => $request->input('address'),
-            'items' => collect($items)->map(function ($item) {
-                return [
-                    'variation_id' => $item['variation_id'],
-                    'product_id' => $item['product_id'],
-                    'quantity' => $item['quantity'],
-                    'price' => $item['price'] ?? 0,
-                ];
-            })->toArray(),
-            'total_amount' => $finalTotal,
-            'note' => "PTTT: {$paymentMethod}. " . ($voucherCode ? "Sử dụng ưu đãi: {$voucherCode}. " : "") . $request->input('note', ''),
-        ];
-
-        $pancakeOrder = $this->pancakeService->createOrder($orderData);
-
-        // Optional: Save to local DB as cache or history?
-        // User said "only manipulate on pancake".
-        // So we return the pancake order.
-
-        // Clear cart
-        if (isset($cart)) {
-            $cart->items()->delete();
-            $cart->delete();
-        }
-
-        return $this->createdResponse($pancakeOrder, 'Order placed successfully');
     }
+
 
     public function userOrders(Request $request)
     {

@@ -11,7 +11,7 @@ class PancakeProductService extends PancakeClient
     public function getProducts($page = 1, $limit = 8, $search = null, $category_id = null)
     {
         $cacheKey = "pancake_products_master_v1";
-        $rawData = Cache::remember($cacheKey, config('pancake.cache_ttl', 600), function () {
+        $rawData = Cache::remember($cacheKey, 60, function () {
             $response = Http::get("{$this->baseUrl}/shops/{$this->shopId}/products", [
                 'api_key' => $this->apiKey,
                 'page_size' => 1000,
@@ -74,10 +74,15 @@ class PancakeProductService extends PancakeClient
         );
     }
 
-    public function getProduct($id)
+    public function getProduct($id, $refresh = false)
     {
-        // Cache the product for 5 minutes (300 seconds) to vastly improve "Add to cart" speeds
-        return Cache::remember('pancake_product_' . $id, 300, function () use ($id) {
+        $cacheKey = 'pancake_product_' . $id;
+        if ($refresh) {
+            Cache::forget($cacheKey);
+        }
+
+        // Cache the product for 60 seconds
+        return Cache::remember($cacheKey, 60, function () use ($id) {
             $response = Http::get("{$this->baseUrl}/shops/{$this->shopId}/products/{$id}", [
                 'api_key' => $this->apiKey
             ]);
