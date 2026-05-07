@@ -96,8 +96,6 @@ class OrderController extends Controller
                     $result = $this->voucherService->validateVoucher($voucherCode, $subtotal);
                     $discountAmount = $result['discount'];
                     $voucherCode = $result['code']; // Use the normalized code from service
-                } catch (\Exception $e) {
-                    \Log::warning('Voucher validation failed during checkout: ' . $e->getMessage());
                     // Fallback to frontend discount if validation fails but code was provided
                     $discountAmount = (float) ($request->input('discount_amount') ?? $request->input('discountAmount') ?? 0);
                 }
@@ -149,7 +147,6 @@ class OrderController extends Controller
 
             return $this->createdResponse($pancakeOrder, 'Order placed successfully');
         } catch (\Exception $e) {
-            \Log::error('Checkout API Error: ' . $e->getMessage());
             return $this->errorResponse('Checkout failed: ' . $e->getMessage(), 500);
         }
     }

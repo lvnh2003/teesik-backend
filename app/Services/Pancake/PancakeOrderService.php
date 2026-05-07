@@ -96,17 +96,13 @@ class PancakeOrderService extends PancakeClient
             'note' => data_get($data, 'note', ''),
         ];
 
-        \Log::info('Pancake Create Order Payload:', $payload);
-        
         $response = Http::post("{$this->baseUrl}/shops/{$this->shopId}/orders?api_key={$this->apiKey}", $payload);
 
         if ($response->failed()) {
-            \Log::error('Pancake Create Order Failed:', ['status' => $response->status(), 'body' => $response->body()]);
             throw new \Exception('Failed to create order on Pancake: ' . $response->body());
         }
 
         $responseData = $response->json();
-        \Log::info('Pancake Create Order Success:', $responseData);
 
         $orderResponse = $responseData['data'] ?? $responseData;
         
@@ -145,14 +141,6 @@ class PancakeOrderService extends PancakeClient
 
     protected function mapOrder($pancakeOrder)
     {
-        // Add debug logging
-        \Log::debug('Mapping Pancake Order:', [
-            'id' => $pancakeOrder['id'] ?? 'unknown',
-            'total_price' => $pancakeOrder['total_price'] ?? null,
-            'total_discount' => $pancakeOrder['total_discount'] ?? null,
-            'money_to_collect' => $pancakeOrder['money_to_collect'] ?? null,
-            'cod' => $pancakeOrder['cod'] ?? null,
-        ]);
 
         $address = $pancakeOrder['shipping_address'] ?? $pancakeOrder['bill_address'] ?? '';
         if (is_array($address)) {

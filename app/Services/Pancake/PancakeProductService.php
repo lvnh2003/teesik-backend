@@ -18,7 +18,6 @@ class PancakeProductService extends PancakeClient
             ]);
 
             if ($response->failed()) {
-                \Log::error('Pancake API error: ' . $response->body());
                 return [];
             }
 
@@ -65,11 +64,6 @@ class PancakeProductService extends PancakeClient
             [
                 'path' => request()->url(), 
                 'query' => request()->query(),
-                'debug' => [
-                    'raw_count' => count($rawData),
-                    'mapped_count' => $mapped->count(),
-                    'filtered_count' => $filtered->count(),
-                ]
             ]
         );
     }
@@ -134,8 +128,6 @@ class PancakeProductService extends PancakeClient
         $payload = $this->mapProductPayload($data);
 
         $response = Http::post("{$this->baseUrl}/shops/{$this->shopId}/products?api_key={$this->apiKey}", $payload);
-
-        \Log::info('Pancake Create Product Response:', ['status' => $response->status(), 'body' => $response->json()]);
 
         if ($response->failed()) {
             throw new \Exception('Failed to create product on Pancake: ' . $response->body());
