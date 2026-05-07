@@ -96,6 +96,7 @@ class OrderController extends Controller
                     $result = $this->voucherService->validateVoucher($voucherCode, $subtotal);
                     $discountAmount = $result['discount'];
                     $voucherCode = $result['code']; // Use the normalized code from service
+                } catch (\Exception $e) {
                     // Fallback to frontend discount if validation fails but code was provided
                     $discountAmount = (float) ($request->input('discount_amount') ?? $request->input('discountAmount') ?? 0);
                 }
