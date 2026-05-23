@@ -4,76 +4,12 @@ namespace Tests\Feature;
 
 use App\Models\CartItem;
 use App\Models\Product;
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class CartEdgeCaseTest extends TestCase
 {
-    protected function setUp(): void
-    {
-        putenv('DB_CONNECTION=sqlite');
-        putenv('DB_DATABASE=:memory:');
-
-        parent::setUp();
-
-        config([
-            'database.default' => 'sqlite',
-            'database.connections.sqlite.database' => ':memory:',
-        ]);
-
-        $this->createTestTables();
-    }
-
-    private function createTestTables(): void
-    {
-        Schema::create('categories', function (Blueprint $table) {
-            $table->id();
-            $table->string('pancake_id')->nullable()->unique();
-            $table->string('name');
-            $table->string('slug')->index();
-            $table->json('data')->nullable();
-            $table->timestamp('synced_at')->nullable();
-            $table->timestamps();
-        });
-
-        Schema::create('products', function (Blueprint $table) {
-            $table->id();
-            $table->string('pancake_id')->unique();
-            $table->foreignId('category_id')->nullable();
-            $table->string('name');
-            $table->string('slug')->index();
-            $table->string('sku')->nullable()->index();
-            $table->decimal('price', 15, 2)->default(0);
-            $table->decimal('original_price', 15, 2)->default(0);
-            $table->json('category_ids')->nullable();
-            $table->json('images')->nullable();
-            $table->json('variations')->nullable();
-            $table->json('data')->nullable();
-            $table->boolean('is_active')->default(true)->index();
-            $table->timestamp('synced_at')->nullable();
-            $table->timestamps();
-        });
-
-        Schema::create('carts', function (Blueprint $table) {
-            $table->id();
-            $table->string('cart_id')->unique();
-            $table->foreignId('user_id')->nullable();
-            $table->string('status')->default('active');
-            $table->timestamps();
-        });
-
-        Schema::create('cart_items', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('cart_id')->constrained()->cascadeOnDelete();
-            $table->string('product_id');
-            $table->string('product_variant_id')->nullable();
-            $table->integer('quantity')->default(1);
-            $table->json('data')->nullable();
-            $table->timestamps();
-            $table->unique(['cart_id', 'product_id', 'product_variant_id']);
-        });
-    }
+    use RefreshDatabase;
 
     public function test_cart_add_rejects_unknown_variant_for_variant_product(): void
     {
