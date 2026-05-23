@@ -4,14 +4,14 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Services\Pancake\PancakeProductService;
+use App\Repositories\LocalProductRepository;
 
 class ProductController extends Controller
 {
-    protected $pancakeService;
-
-    public function __construct(PancakeProductService $pancakeService)
-    {
-        $this->pancakeService = $pancakeService;
+    public function __construct(
+        private LocalProductRepository $products,
+        private PancakeProductService $pancakeService
+    ) {
     }
 
     public function index(Request $request)
@@ -25,7 +25,7 @@ class ProductController extends Controller
         // Frontend should pass ID or we'd need a slug-to-ID lookup (which we can't easily do without caching categories).
         // For now assume frontend passes category_id or we ignore slug filter.
 
-        $paginator = $this->pancakeService->getProducts($page, $limit, $search, $categoryId);
+        $paginator = $this->products->paginate($page, $limit, $search, $categoryId);
 
         return $this->paginatedResponse($paginator);
     }
@@ -45,6 +45,7 @@ class ProductController extends Controller
         }
 
         $product = $this->pancakeService->createProduct($data);
+        $this->products->upsertProduct($product);
 
         return $this->createdResponse($product, 'Product created successfully');
     }
@@ -52,7 +53,10 @@ class ProductController extends Controller
     public function show($id)
     {
         try {
-            $product = $this->pancakeService->getProduct($id);
+            $product = $this->products->findByPancakeId($id);
+            if (!$product) {
+                return $this->errorResponse('Product not found', 404);
+            }
             return $this->successResponse($product);
         } catch (\Exception $e) {
             return $this->errorResponse('Product not found', 404);
@@ -74,6 +78,7 @@ class ProductController extends Controller
         }
 
         $updatedProduct = $this->pancakeService->updateProduct($id, $data);
+        $this->products->upsertProduct($updatedProduct);
 
         return $this->successResponse($updatedProduct, 'Product updated successfully');
     }

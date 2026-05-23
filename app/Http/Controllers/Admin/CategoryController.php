@@ -5,19 +5,19 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Services\Pancake\PancakeProductService;
+use App\Repositories\LocalProductRepository;
 
 class CategoryController extends Controller
 {
-    protected $pancakeService;
-
-    public function __construct(PancakeProductService $pancakeService)
-    {
-        $this->pancakeService = $pancakeService;
+    public function __construct(
+        private LocalProductRepository $products,
+        private PancakeProductService $pancakeService
+    ) {
     }
 
     public function index()
     {
-        $categories = $this->pancakeService->getCategories();
+        $categories = $this->products->categories();
         return $this->successResponse($categories);
     }
 
@@ -28,6 +28,7 @@ class CategoryController extends Controller
         ]);
 
         $category = $this->pancakeService->createCategory($request->name);
+        $this->products->upsertCategory($category);
 
         return $this->createdResponse($category, 'Category created successfully on Pancake');
     }

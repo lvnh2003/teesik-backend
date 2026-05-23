@@ -38,6 +38,7 @@ use App\Http\Controllers\Admin\PromotionController;
 use App\Http\Controllers\Admin\VoucherController;
 use App\Http\Controllers\Admin\ComboController;
 use App\Http\Controllers\Admin\StatisticController;
+use App\Http\Controllers\Admin\SyncController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\PaymentController;
@@ -68,7 +69,6 @@ Route::prefix('v1')->group(function () {
     Route::middleware('auth:api')->post('/wishlists/toggle', [\App\Http\Controllers\WishlistController::class, 'toggle']);
     Route::get('/vouchers', [\App\Http\Controllers\VoucherController::class, 'index']);
     Route::post('/vouchers/validate', [\App\Http\Controllers\VoucherController::class, 'validateVoucher']);
-    Route::post('/vouchers/refresh', [\App\Http\Controllers\VoucherController::class, 'refreshCache']);
 
     // User Addresses
     Route::middleware('auth:api')->get('/user/addresses', [\App\Http\Controllers\UserAddressController::class, 'index']);
@@ -90,10 +90,14 @@ Route::prefix('v1')->group(function () {
     Route::get('/categories', [CategoryController::class, 'index']);
 
     Route::prefix('admin')->middleware(['auth:api', 'admin'])->group(function () {
+        Route::get('check', \App\Http\Controllers\Admin\AuthCheckController::class);
         Route::apiResource('users', \App\Http\Controllers\Admin\UserController::class);
         Route::apiResource('products', ProductController::class);
         Route::apiResource('categories', CategoryController::class);
         Route::apiResource('orders', AdminOrderController::class);
+        Route::get('dashboard', [StatisticController::class, 'dashboard']);
+        Route::get('sync/status', [SyncController::class, 'status']);
+        Route::post('sync', [SyncController::class, 'sync']);
 
         // Warehouse Routes
         Route::get('warehouses', [\App\Http\Controllers\Admin\WarehouseController::class, 'index']);
@@ -105,6 +109,7 @@ Route::prefix('v1')->group(function () {
         Route::apiResource('purchases', PurchaseController::class)->only(['index', 'store', 'update']);
         Route::apiResource('promotions', PromotionController::class)->only(['index']);
         Route::apiResource('vouchers', VoucherController::class)->only(['index']);
+        Route::post('vouchers/refresh', [\App\Http\Controllers\VoucherController::class, 'refreshCache']);
         Route::apiResource('combos', ComboController::class)->only(['index']);
 
         Route::get('statistics/sales', [StatisticController::class, 'sales']);

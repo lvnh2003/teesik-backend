@@ -10,14 +10,17 @@ class PaymentController extends Controller
     {
         $request->validate([
             'order_id' => 'required',
-            'payment_method' => 'required|string'
+            'payment_method' => 'required|string|in:cod,qr,momo,card,COD,QR,MOMO,CARD'
         ]);
 
         $orderId = $request->order_id;
         $paymentMethod = $request->payment_method;
 
-        // Mock Payment Logic
-        // In production, integrate with VNPay, Momo, Stripe, etc.
+        if (!app()->environment('local', 'testing')) {
+            return $this->errorResponse('Online payment provider is not configured.', 501);
+        }
+
+        // Local/test mock only. In production, integrate with VNPay, Momo, Stripe, etc.
         // and optionally update the order status on Pancake via PancakeService.
 
         $success = true; // Simulate success

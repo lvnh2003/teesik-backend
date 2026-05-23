@@ -5,14 +5,14 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Services\Pancake\PancakeProductService;
+use App\Repositories\LocalProductRepository;
 
 class ProductController extends Controller
 {
-    protected $pancakeService;
-
-    public function __construct(PancakeProductService $pancakeService)
-    {
-        $this->pancakeService = $pancakeService;
+    public function __construct(
+        private LocalProductRepository $products,
+        private PancakeProductService $pancakeService
+    ) {
     }
 
     public function index(Request $request)
@@ -24,14 +24,17 @@ class ProductController extends Controller
 
         // Note: status filter not fully implemented in service yet, but can be passed if needed
 
-        $paginator = $this->pancakeService->getProducts($page, $limit, $search, $categoryId);
+        $paginator = $this->products->paginate($page, $limit, $search, $categoryId);
 
         return $this->paginatedResponse($paginator);
     }
 
     public function show($id)
     {
-        $product = $this->pancakeService->getProduct($id);
+        $product = $this->products->findByPancakeId($id);
+        if (!$product) {
+            return $this->errorResponse('Product not found in local catalog', 404);
+        }
 
         return $this->successResponse($product);
     }
@@ -43,6 +46,7 @@ class ProductController extends Controller
         ]);
 
         $product = $this->pancakeService->createProduct($request->all());
+        $this->products->upsertProduct($product);
 
         return $this->createdResponse($product, 'Product created successfully on Pancake');
     }
@@ -50,6 +54,7 @@ class ProductController extends Controller
     public function update(Request $request, $id)
     {
         $product = $this->pancakeService->updateProduct($id, $request->all());
+        $this->products->upsertProduct($product);
 
         return $this->successResponse($product, 'Product updated successfully on Pancake');
     }

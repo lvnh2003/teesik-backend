@@ -3,21 +3,26 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use App\Services\Pancake\PancakeOrderService;
-use App\Services\Pancake\PancakeProductService;
-use Carbon\Carbon;
+use App\Repositories\LocalOrderRepository;
+use App\Repositories\LocalProductRepository;
+use App\Services\Shipping\GhnShippingService;
 
 class OrderController extends Controller
 {
+    protected $orders;
+    protected $productService;
+    protected $shippingService;
     protected $voucherService;
 
     public function __construct(
-        PancakeOrderService $pancakeService, 
-        PancakeProductService $productService,
+        LocalOrderRepository $orders,
+        LocalProductRepository $productService,
+        GhnShippingService $shippingService,
         \App\Services\VoucherService $voucherService
     ) {
-        $this->pancakeService = $pancakeService;
+        $this->orders = $orders;
         $this->productService = $productService;
+        $this->shippingService = $shippingService;
         $this->voucherService = $voucherService;
     }
 
@@ -32,6 +37,16 @@ class OrderController extends Controller
                 'customer_email' => 'nullable|email',
                 'address' => 'required|string',
                 'customer_phone' => 'required|string',
+                'payment_method' => 'nullable|string|in:cod,qr,momo,card,COD,QR,MOMO,CARD',
+                'selected_address_id' => 'nullable|integer',
+                'district_id' => 'nullable|integer',
+                'ward_code' => 'nullable|string',
+                'items' => 'nullable|array',
+                'items.*.product_id' => 'nullable',
+                'items.*.id' => 'nullable',
+                'items.*.variation_id' => 'nullable',
+                'items.*.variant_id' => 'nullable',
+                'items.*.quantity' => 'required_with:items|integer|min:1|max:99',
             ]);
 
             $cartId = $request->header('X-Cart-ID');
@@ -53,17 +68,11 @@ class OrderController extends Controller
                     $productId = $item->product_id;
                     $variationId = $item->product_variant_id;
 
-                    if (!$variationId || $variationId === $productId) {
-                        $variationId = $this->productService->resolveVariationId($productId, $variationId);
-                    }
-
-                    return [
-                        'product_id' => $productId,
-                        'variation_id' => $variationId,
-                        'quantity' => (int) ($item->quantity ?? 1),
-                        'price' => (float) ($item->price ?? 0),
-                        'name' => $item->name ?? 'Product',
-                    ];
+                    return $this->productService->resolveOrderItem(
+                        $productId,
+                        $variationId,
+                        $item->quantity ?? 1
+                    );
                 })->toArray();
             }
 
@@ -76,19 +85,12 @@ class OrderController extends Controller
                         if (!$productId) continue;
 
                         $variationId = data_get($inputItem, 'variation_id') ?? data_get($inputItem, 'variant_id');
-                        
-                        // Resolve valid variation_id if missing or matches product_id
-                        if (!$variationId || $variationId === $productId) {
-                            $variationId = $this->productService->resolveVariationId($productId, $variationId);
-                        }
-                        
-                        $items[] = [
-                            'product_id' => $productId,
-                            'variation_id' => $variationId,
-                            'quantity' => (int) data_get($inputItem, 'quantity', 1),
-                            'price' => (float) data_get($inputItem, 'price', 0),
-                            'name' => data_get($inputItem, 'name', 'Product'),
-                        ];
+
+                        $items[] = $this->productService->resolveOrderItem(
+                            $productId,
+                            $variationId,
+                            data_get($inputItem, 'quantity', 1)
+                        );
                     }
                 }
             }
@@ -109,8 +111,7 @@ class OrderController extends Controller
                     $discountAmount = $result['discount'];
                     $voucherCode = $result['code']; // Use the normalized code from service
                 } catch (\Exception $e) {
-                    // Fallback to frontend discount if validation fails but code was provided
-                    $discountAmount = (float) ($request->input('discount_amount') ?? $request->input('discountAmount') ?? 0);
+                    return $this->errorResponse($e->getMessage(), 400);
                 }
             }
 
@@ -120,15 +121,10 @@ class OrderController extends Controller
                 $discountAmount = $subtotal;
             }
 
-            // Use frontend discount if backend validation failed but voucher exists
-            if ($discountAmount == 0 && $voucherCode) {
-                $discountAmount = (float) ($request->input('discount_amount') ?? $request->input('discountAmount') ?? 0);
-            }
-
-            $shippingFee = (float) $request->input('shipping_fee', 0);
+            $shippingFee = $this->resolveShippingFee($request, $user, $subtotal);
             $paymentMethod = strtoupper($request->input('payment_method', 'COD'));
 
-            // Prepare data for Pancake
+            // Prepare normalized order data for the local database.
             $orderData = [
                 'customer_name' => $request->input('customer_name'),
                 'customer_email' => $request->input('customer_email') ?: ($user?->email ?? ''),
@@ -142,7 +138,7 @@ class OrderController extends Controller
                 'note' => "PTTT: {$paymentMethod}. " . ($voucherCode ? "Sử dụng ưu đãi: {$voucherCode}. Giảm: " . number_format($discountAmount, 0, ',', '.') . "đ. " : "") . $request->input('note', ''),
             ];
 
-            $pancakeOrder = $this->pancakeService->createOrder($orderData);
+            $order = $this->orders->createCheckoutOrder($orderData, $user);
 
             // Clear cart from database
             if ($cart) {
@@ -155,13 +151,46 @@ class OrderController extends Controller
                 \App\Models\Cart::where('user_id', $user->id)->delete();
             }
 
-            // Clear cache
-            \Illuminate\Support\Facades\Cache::forget('pancake_products_master_v1');
-
-            return $this->createdResponse($pancakeOrder, 'Order placed successfully');
+            return $this->createdResponse($order, 'Order placed successfully');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            throw $e;
+        } catch (\InvalidArgumentException $e) {
+            return $this->errorResponse($e->getMessage(), 400);
         } catch (\Exception $e) {
             return $this->errorResponse('Checkout failed: ' . $e->getMessage(), 500);
         }
+    }
+
+    private function resolveShippingFee(Request $request, $user, float $subtotal): float
+    {
+        if ($subtotal > 1000000) {
+            return 0;
+        }
+
+        $districtId = null;
+        $wardCode = null;
+
+        if ($user && $request->filled('selected_address_id')) {
+            $address = \App\Models\UserAddress::where('user_id', $user->id)
+                ->where('id', $request->input('selected_address_id'))
+                ->first();
+
+            if (!$address) {
+                throw new \InvalidArgumentException('Địa chỉ giao hàng không hợp lệ.');
+            }
+
+            $districtId = $address->district_id;
+            $wardCode = $address->ward_code;
+        } else {
+            $districtId = $request->input('district_id');
+            $wardCode = $request->input('ward_code');
+        }
+
+        if (!$districtId || !$wardCode) {
+            throw new \InvalidArgumentException('Thiếu thông tin khu vực giao hàng.');
+        }
+
+        return (float) $this->shippingService->calculateFee($districtId, $wardCode, 300, $subtotal);
     }
 
 
@@ -177,34 +206,8 @@ class OrderController extends Controller
         $search = $request->get('search');
         $status = $request->get('status');
 
-        // Search Pancake by user's phone number (more reliable than email
-        // since Pancake orders are created with phone as the primary identifier).
-        // We fetch orders matching the phone, then verify email ownership locally.
-        $pancakeSearchQuery = $user->phone ?? $user->email;
-        $paginator = $this->pancakeService->getOrders($page, $limit, $pancakeSearchQuery, $status);
+        $paginator = $this->orders->paginateForUser($user, $page, $limit, $search, $status);
 
-        $items = collect($paginator->items());
-
-        // Filter to only orders belonging to this user (match by phone OR email)
-        $userPhone = $user->phone;
-        $userEmail = $user->email;
-        $items = $items->filter(function ($order) use ($userPhone, $userEmail) {
-            $phoneMatch = $userPhone && ($order['customer_phone'] ?? '') === $userPhone;
-            $emailMatch = $userEmail && strtolower($order['customer_email'] ?? '') === strtolower($userEmail);
-            return $phoneMatch || $emailMatch;
-        })->values();
-
-        // Apply additional user search term if provided
-        if ($search) {
-            $searchLower = strtolower($search);
-            $items = $items->filter(function ($order) use ($searchLower) {
-                $idMatch = str_contains(strtolower((string)($order['id'] ?? '')), $searchLower);
-                $nameMatch = str_contains(strtolower($order['customer_name'] ?? ''), $searchLower);
-                $phoneMatch = str_contains(strtolower($order['customer_phone'] ?? ''), $searchLower);
-                return $idMatch || $nameMatch || $phoneMatch;
-            })->values();
-        }
-
-        return $this->paginatedResponse($paginator, $items);
+        return $this->paginatedResponse($paginator);
     }
 }

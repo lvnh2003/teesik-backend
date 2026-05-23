@@ -2,20 +2,18 @@
 
 namespace App\Services;
 
-use App\Services\Pancake\PancakeMarketingService;
+use App\Repositories\LocalVoucherRepository;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class VoucherService
 {
-    protected $marketingService;
     protected $cacheKey = 'pancake_vouchers_list';
     protected $cacheTTL = 600; // 10 minutes
 
-    public function __construct(PancakeMarketingService $marketingService)
+    public function __construct(private LocalVoucherRepository $vouchers)
     {
-        $this->marketingService = $marketingService;
     }
 
     /**
@@ -25,16 +23,7 @@ class VoucherService
      */
     public function getAllVouchers()
     {
-        return Cache::remember($this->cacheKey, $this->cacheTTL, function () {
-            try {
-                // Fetch up to 500 vouchers to ensure we cover most active ones
-                $paginator = $this->marketingService->getVouchers(1, 500);
-                return collect($paginator->items());
-            } catch (\Exception $e) {
-                Log::error('Failed to fetch vouchers from Pancake: ' . $e->getMessage());
-                return collect([]);
-            }
-        });
+        return $this->vouchers->all();
     }
 
     /**
@@ -47,9 +36,7 @@ class VoucherService
         $vouchers = $this->getAllVouchers();
         $now = Carbon::now();
 
-        return $vouchers->map(function ($voucher) {
-            return $this->normalizeVoucher($voucher);
-        })->filter(function ($voucher) use ($now) {
+        return $vouchers->filter(function ($voucher) use ($now) {
             // Must have a code
             if (empty($voucher['code'])) return false;
 
@@ -82,8 +69,8 @@ class VoucherService
         $code = $voucher['code'] ?? ($voucher['promo_code'] ?? ($voucher['name'] ?? ''));
         $isActivated = $voucher['is_activated'] ?? true;
         $isPercent = $voucher['is_use_percent'] ?? ($voucher['promo_code_info']['is_percent'] ?? ($voucher['is_percent'] ?? false));
-        $discountValue = $voucher['value_discount'] ?? ($voucher['promo_code_info']['discount'] ?? 0);
-        $maxDiscount = $voucher['max_amount_discount'] ?? ($voucher['promo_code_info']['max_discount_by_percent'] ?? 0);
+        $discountValue = $voucher['value_discount'] ?? ($voucher['discount_value'] ?? ($voucher['promo_code_info']['discount'] ?? 0));
+        $maxDiscount = $voucher['max_amount_discount'] ?? ($voucher['max_discount'] ?? ($voucher['promo_code_info']['max_discount_by_percent'] ?? 0));
         $minOrderValue = $voucher['condition_amount'] ?? ($voucher['min_order_value'] ?? ($voucher['promo_code_info']['min_order_amount'] ?? 0));
         $usageLimit = $voucher['usage_limit'] ?? ($voucher['quantity'] ?? 0);
         $usedCount = $voucher['used_count'] ?? ($voucher['used_quantity'] ?? 0);
