@@ -16,7 +16,7 @@ class CartController extends Controller
     private function getCart(Request $request)
     {
         $cartId = $request->header('X-Cart-ID');
-        $user = $request->user('api');
+        $user = $request->bearerToken() ? $request->user('api') : null;
 
         if (!$cartId) {
             return null;

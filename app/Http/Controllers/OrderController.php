@@ -50,7 +50,7 @@ class OrderController extends Controller
             ]);
 
             $cartId = $request->header('X-Cart-ID');
-            $user = $request->user('api');
+            $user = $request->bearerToken() ? $request->user('api') : null;
 
             $items = [];
             $cart = null;
