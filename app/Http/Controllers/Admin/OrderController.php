@@ -5,15 +5,12 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use App\Services\Pancake\PancakeOrderService;
+use App\Repositories\LocalOrderRepository;
 
 class OrderController extends Controller
 {
-    protected $pancakeService;
-
-    public function __construct(PancakeOrderService $pancakeService)
+    public function __construct(private LocalOrderRepository $orders)
     {
-        $this->pancakeService = $pancakeService;
     }
 
     public function index(Request $request)
@@ -23,7 +20,7 @@ class OrderController extends Controller
         $search = $request->get('search');
         $status = $request->get('status');
 
-        $paginator = $this->pancakeService->getOrders($page, $limit, $search, $status);
+        $paginator = $this->orders->paginate($page, $limit, $search, $status);
 
         return $this->paginatedResponse($paginator);
     }
@@ -31,7 +28,10 @@ class OrderController extends Controller
     public function show($id)
     {
         try {
-            $order = $this->pancakeService->getOrder($id);
+            $order = $this->orders->find($id);
+            if (!$order) {
+                return $this->errorResponse('Order not found', 404);
+            }
             return $this->successResponse($order);
         } catch (\Exception $e) {
             return $this->errorResponse('Order not found', 404);
@@ -48,15 +48,17 @@ class OrderController extends Controller
             'items.*.quantity' => 'required|integer|min:1',
         ]);
 
-        $order = $this->pancakeService->createOrder($request->all());
-
-        return $this->createdResponse($order, 'Order created successfully on Pancake');
+        return response()->json([
+            'success' => false,
+            'message' => 'Create orders through checkout or sync from Pancake.'
+        ], 501);
     }
 
     public function update(Request $request, $id)
     {
-        $order = $this->pancakeService->updateOrder($id, $request->all());
-
-        return $this->successResponse($order, 'Order updated successfully on Pancake');
+        return response()->json([
+            'success' => false,
+            'message' => 'Order updates should be handled by local order workflow.'
+        ], 501);
     }
 }

@@ -113,11 +113,11 @@ class PancakeProductService extends PancakeClient
             $rawData = Cache::get($cacheKey);
             
             if ($rawData) {
-                $product = collect($rawData)->first(fn($p) => $p['id'] === $productId);
+                $product = collect($rawData)->first(fn($p) => (string) $p['id'] === (string) $productId);
                 if ($product && !empty($product['variations'])) {
                     // If checkId is the product ID, or not found in variations, pick the first one
-                    $variationExists = collect($product['variations'])->contains('id', $checkId);
-                    if (!$variationExists || $checkId === $productId) {
+                    $variationExists = collect($product['variations'])->contains(fn($item) => (string) ($item['id'] ?? '') === (string) $checkId);
+                    if (!$variationExists || (string) $checkId === (string) $productId) {
                         return $product['variations'][0]['id'];
                     }
                     return $checkId;
@@ -127,8 +127,8 @@ class PancakeProductService extends PancakeClient
             // Fallback to single product fetch (caches result)
             $product = $this->getProduct($productId);
             if ($product && !empty($product['variations'])) {
-                $variationExists = collect($product['variations'])->contains('id', $checkId);
-                if (!$variationExists || $checkId === $productId) {
+                $variationExists = collect($product['variations'])->contains(fn($item) => (string) ($item['id'] ?? '') === (string) $checkId);
+                if (!$variationExists || (string) $checkId === (string) $productId) {
                     return $product['variations'][0]['id'];
                 }
             }
@@ -137,6 +137,46 @@ class PancakeProductService extends PancakeClient
         }
 
         return $checkId;
+    }
+
+    public function resolveOrderItem($productId, $variationId = null, $quantity = 1)
+    {
+        $product = $this->getProduct($productId);
+        $resolvedVariationId = $variationId;
+        $name = $product['name'] ?? 'Product';
+        $price = (float) ($product['price'] ?? 0);
+        $attributes = [];
+
+        if (!empty($product['variations'])) {
+            $resolvedVariationId = $this->resolveVariationId($productId, $variationId);
+            $variation = collect($product['variations'])->first(function ($item) use ($resolvedVariationId) {
+                return (string) ($item['id'] ?? '') === (string) $resolvedVariationId;
+            });
+
+            if (!$variation) {
+                throw new \Exception('Product variation not found');
+            }
+
+            $price = (float) ($variation['price'] ?? $price);
+            $attributes = $variation['attributes'] ?? [];
+
+            if (!empty($attributes)) {
+                $name .= ' (' . implode(', ', array_values($attributes)) . ')';
+            }
+        }
+
+        if ($price <= 0) {
+            throw new \Exception('Product price is invalid');
+        }
+
+        return [
+            'product_id' => $productId,
+            'variation_id' => $resolvedVariationId,
+            'quantity' => max(1, min(99, (int) $quantity)),
+            'price' => $price,
+            'name' => $name,
+            'attributes' => $attributes,
+        ];
     }
 
     public function getVariations($productId)
@@ -156,7 +196,7 @@ class PancakeProductService extends PancakeClient
         // We must filter them manually.
         $allVariations = $data['data'] ?? [];
         return array_values(array_filter($allVariations, function ($var) use ($productId) {
-            return isset($var['product_id']) && $var['product_id'] === $productId;
+            return isset($var['product_id']) && (string) $var['product_id'] === (string) $productId;
         }));
     }
 

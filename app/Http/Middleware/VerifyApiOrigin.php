@@ -39,28 +39,27 @@ class VerifyApiOrigin
             $allowedOrigins[] = strtolower($appUrlHost);
         }
 
+        $isAllowedHost = function (string $host) use ($allowedOrigins): bool {
+            foreach ($allowedOrigins as $allowed) {
+                if ($host === $allowed || str_ends_with($host, '.' . $allowed)) {
+                    return true;
+                }
+            }
+
+            return false;
+        };
+
         // 3. Check Origin header (Browser requests)
         $origin = $request->headers->get('Origin');
         if ($origin) {
             $parsedOrigin = strtolower(parse_url($origin, PHP_URL_HOST) ?? '');
-            if ($parsedOrigin && !in_array($parsedOrigin, $allowedOrigins)) {
-                // Check for substrings as a fallback for dev environments or subdomains
-                $isAllowed = false;
-                foreach ($allowedOrigins as $allowed) {
-                    if (str_contains($parsedOrigin, $allowed)) {
-                        $isAllowed = true;
-                        break;
-                    }
-                }
-
-                if (!$isAllowed) {
-                    \Log::warning('Blocked Origin: ' . $parsedOrigin . ' (Full: ' . $origin . ')');
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Unauthorized origin.',
-                        'origin' => $parsedOrigin
-                    ], 403);
-                }
+            if ($parsedOrigin && !$isAllowedHost($parsedOrigin)) {
+                \Log::warning('Blocked Origin: ' . $parsedOrigin . ' (Full: ' . $origin . ')');
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized origin.',
+                    'origin' => $parsedOrigin
+                ], 403);
             }
             return $next($request);
         }
@@ -69,22 +68,12 @@ class VerifyApiOrigin
         $referer = $request->headers->get('Referer');
         if ($referer) {
             $parsedReferer = strtolower(parse_url($referer, PHP_URL_HOST) ?? '');
-            if ($parsedReferer && !in_array($parsedReferer, $allowedOrigins)) {
-                $isAllowed = false;
-                foreach ($allowedOrigins as $allowed) {
-                    if (str_contains($parsedReferer, $allowed)) {
-                        $isAllowed = true;
-                        break;
-                    }
-                }
-
-                if (!$isAllowed) {
-                    \Log::warning('Blocked Referer: ' . $parsedReferer . ' (Full: ' . $referer . ')');
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Unauthorized referer.'
-                    ], 403);
-                }
+            if ($parsedReferer && !$isAllowedHost($parsedReferer)) {
+                \Log::warning('Blocked Referer: ' . $parsedReferer . ' (Full: ' . $referer . ')');
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized referer.'
+                ], 403);
             }
             return $next($request);
         }

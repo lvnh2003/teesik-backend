@@ -3,24 +3,20 @@
 namespace App\Http\Controllers;
 
 use App\Models\Cart;
-use App\Models\CartItem;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
-use App\Services\Pancake\PancakeProductService;
+use App\Repositories\LocalProductRepository;
 
 class CartController extends Controller
 {
-    protected $pancakeService;
-
-    public function __construct(PancakeProductService $pancakeService)
+    public function __construct(private LocalProductRepository $products)
     {
-        $this->pancakeService = $pancakeService;
     }
 
     private function getCart(Request $request)
     {
         $cartId = $request->header('X-Cart-ID');
-        $user = $request->user('api');
+        $user = $request->bearerToken() ? $request->user('api') : null;
 
         if (!$cartId) {
             return null;
@@ -45,7 +41,7 @@ class CartController extends Controller
                     ->first();
 
                 if ($existingItem) {
-                    $existingItem->quantity += $sessionItem->quantity;
+                    $existingItem->quantity = min(99, $existingItem->quantity + $sessionItem->quantity);
                     $existingItem->save();
                 } else {
                     $sessionItem->cart_id = $userCart->id;
@@ -113,6 +109,12 @@ class CartController extends Controller
 
     public function add(Request $request)
     {
+        $request->validate([
+            'product_id' => 'required',
+            'variant_id' => 'nullable',
+            'quantity' => 'nullable|integer|min:1|max:99',
+        ]);
+
         $cart = $this->getCart($request);
         if (!$cart)
             return $this->errorResponse('Cart ID missing', 400);
@@ -122,15 +124,17 @@ class CartController extends Controller
         $variantId = $request->input('variant_id');
 
         try {
-            $pancakeProduct = $this->pancakeService->getProduct($productId);
-
-            $name = $pancakeProduct['name'];
-            $price = $pancakeProduct['price'];
+            $resolvedItem = $this->products->resolveOrderItem($productId, $variantId, $quantity);
+            $variantId = $resolvedItem['variation_id'];
+            $quantity = $resolvedItem['quantity'];
+            $pancakeProduct = $this->products->findByPancakeId($productId);
+            $name = $resolvedItem['name'];
+            $price = $resolvedItem['price'];
             $image = null;
-            $attributes = [];
+            $attributes = $resolvedItem['attributes'];
 
             // Extract image from product
-            if (!empty($pancakeProduct['images']) && is_array($pancakeProduct['images'])) {
+            if ($pancakeProduct && !empty($pancakeProduct['images']) && is_array($pancakeProduct['images'])) {
                 $firstImage = $pancakeProduct['images'][0];
                 if (is_array($firstImage) && isset($firstImage['image_path'])) {
                     $image = $firstImage['image_path'];
@@ -139,14 +143,10 @@ class CartController extends Controller
                 }
             }
 
-            // If variant_id provided, find the specific variation for correct price/attributes
-            if ($variantId && !empty($pancakeProduct['variations'])) {
+            // Use variation image when available.
+            if ($variantId && $pancakeProduct && !empty($pancakeProduct['variations'])) {
                 foreach ($pancakeProduct['variations'] as $variation) {
-                    if ($variation['id'] === $variantId) {
-                        $price = $variation['price'] ?? $price;
-                        $attributes = $variation['attributes'] ?? [];
-
-                        // Use variation image if available
+                    if ((string) $variation['id'] === (string) $variantId) {
                         if (!empty($variation['images'])) {
                             $varImg = $variation['images'][0];
                             if (is_array($varImg) && isset($varImg['image_path'])) {
@@ -155,27 +155,13 @@ class CartController extends Controller
                                 $image = $varImg;
                             }
                         }
-
-                        // Append variation attributes to name
-                        if (!empty($attributes)) {
-                            $attrParts = implode(', ', array_values($attributes));
-                            $name = $pancakeProduct['name'] . " ($attrParts)";
-                        }
                         break;
                     }
                 }
             }
 
-            // If no variant_id but product has variations, use first variation's ID
-            if (!$variantId && !empty($pancakeProduct['variations'])) {
-                $firstVariation = $pancakeProduct['variations'][0];
-                $variantId = $firstVariation['id'];
-                $price = $firstVariation['price'] ?? $price;
-                $attributes = $firstVariation['attributes'] ?? [];
-            }
-
         } catch (\Exception $e) {
-            return $this->errorResponse('Product not found on Pancake', 404);
+            return $this->errorResponse($e->getMessage(), 400);
         }
 
         $item = $cart->items()
@@ -184,9 +170,18 @@ class CartController extends Controller
             ->first();
 
         if ($item) {
-            $item->quantity += $quantity;
+            $nextQuantity = min(99, $item->quantity + $quantity);
+            try {
+                $this->products->resolveOrderItem($productId, $variantId, $nextQuantity);
+            } catch (\Exception $e) {
+                return $this->errorResponse($e->getMessage(), 400);
+            }
+
+            $item->quantity = $nextQuantity;
             $data = $item->data ?? [];
+            $data['name'] = $name;
             $data['price'] = $price;
+            $data['image'] = $image;
             $data['attributes'] = $attributes;
             $item->data = $data;
             $item->save();
@@ -209,6 +204,12 @@ class CartController extends Controller
 
     public function update(Request $request)
     {
+        $request->validate([
+            'product_id' => 'required',
+            'variant_id' => 'nullable',
+            'quantity' => 'required|integer|min:0|max:99',
+        ]);
+
         $cart = $this->getCart($request);
         if (!$cart)
             return $this->errorResponse('Cart empty', 404);
@@ -227,7 +228,25 @@ class CartController extends Controller
             if ($quantity <= 0) {
                 $item->delete();
             } else {
-                $item->update(['quantity' => $quantity]);
+                try {
+                    $resolvedItem = $this->products->resolveOrderItem(
+                        $productId,
+                        $item->product_variant_id,
+                        $quantity
+                    );
+                } catch (\Exception $e) {
+                    return $this->errorResponse($e->getMessage(), 400);
+                }
+
+                $data = $item->data ?? [];
+                $data['name'] = $resolvedItem['name'];
+                $data['price'] = $resolvedItem['price'];
+                $data['attributes'] = $resolvedItem['attributes'];
+
+                $item->update([
+                    'quantity' => $resolvedItem['quantity'],
+                    'data' => $data,
+                ]);
             }
         }
 
@@ -236,6 +255,11 @@ class CartController extends Controller
 
     public function remove(Request $request)
     {
+        $request->validate([
+            'product_id' => 'required',
+            'variant_id' => 'nullable',
+        ]);
+
         $cart = $this->getCart($request);
         if (!$cart)
             return $this->errorResponse('Cart empty', 404);

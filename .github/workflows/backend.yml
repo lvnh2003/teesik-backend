@@ -54,7 +54,7 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ env.PHP_VERSION }}
-          extensions: mbstring, pdo, pdo_mysql, gd, zip, exif, pcntl
+          extensions: mbstring, pdo, pdo_mysql, gd, zip, exif, pcntl, sodium
           coverage: none
 
       - name: Cache Composer dependencies

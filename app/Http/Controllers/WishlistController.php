@@ -4,11 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\Wishlist;
 use Illuminate\Http\Request;
-use App\Services\Pancake\PancakeProductService;
+use App\Repositories\LocalProductRepository;
 
 class WishlistController extends Controller
 {
-    public function index(Request $request, PancakeProductService $pancakeService)
+    public function index(Request $request, LocalProductRepository $products)
     {
         $user = $request->user('api');
         if (!$user) {
@@ -20,7 +20,10 @@ class WishlistController extends Controller
         $items = [];
         foreach ($wishlists as $wishlist) {
             try {
-                $product = $pancakeService->getProduct($wishlist->product_id);
+                $product = $products->findByPancakeId($wishlist->product_id);
+                if (!$product) {
+                    continue;
+                }
                 // Extract image
                 $image = null;
                 if (!empty($product['images']) && is_array($product['images'])) {

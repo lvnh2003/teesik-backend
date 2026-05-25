@@ -3,16 +3,13 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Services\Pancake\PancakeMarketingService;
+use App\Repositories\LocalVoucherRepository;
 use Illuminate\Http\Request;
 
 class VoucherController extends Controller
 {
-    protected $pancakeService;
-
-    public function __construct(PancakeMarketingService $pancakeService)
+    public function __construct(private LocalVoucherRepository $vouchers)
     {
-        $this->pancakeService = $pancakeService;
     }
 
     public function index(Request $request)
@@ -20,7 +17,7 @@ class VoucherController extends Controller
         $page = $request->input('page', 1);
         $limit = $request->input('limit', 30);
 
-        $vouchers = $this->pancakeService->getVouchers($page, $limit);
+        $vouchers = $this->vouchers->paginate($page, $limit);
 
         return $this->paginatedResponse($vouchers);
     }
