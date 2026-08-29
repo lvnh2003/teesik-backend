@@ -4,6 +4,7 @@ namespace App\Repositories;
 
 use App\Models\Order;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Str;
 
 class LocalOrderRepository
 {
@@ -113,10 +114,15 @@ class LocalOrderRepository
             'data' => [
                 'note' => data_get($data, 'note', ''),
                 'source' => 'local_checkout',
+                'cart_id' => data_get($data, 'cart_id'),
+                'payment_access_token' => Str::random(48),
             ],
         ]);
 
-        return $order->toApiArray();
+        $orderData = $order->toApiArray();
+        $orderData['payment_access_token'] = data_get($order->data, 'payment_access_token');
+
+        return $orderData;
     }
 
     public function upsertFromPancake(array $order): Order

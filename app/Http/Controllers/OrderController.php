@@ -26,28 +26,9 @@ class OrderController extends Controller
         $this->voucherService = $voucherService;
     }
 
-    public function checkout(Request $request)
+    public function checkout(\App\Http\Requests\CreateOrderRequest $request)
     {
-
-
         try {
-            // Validate request
-            $request->validate([
-                'customer_name' => 'required|string',
-                'customer_email' => 'nullable|email',
-                'address' => 'required|string',
-                'customer_phone' => 'required|string',
-                'payment_method' => 'nullable|string|in:cod,qr,momo,card,COD,QR,MOMO,CARD',
-                'selected_address_id' => 'nullable|integer',
-                'district_id' => 'nullable|integer',
-                'ward_code' => 'nullable|string',
-                'items' => 'nullable|array',
-                'items.*.product_id' => 'nullable',
-                'items.*.id' => 'nullable',
-                'items.*.variation_id' => 'nullable',
-                'items.*.variant_id' => 'nullable',
-                'items.*.quantity' => 'required_with:items|integer|min:1|max:99',
-            ]);
 
             $cartId = $request->header('X-Cart-ID');
             $user = $request->bearerToken() ? $request->user('api') : null;
@@ -130,6 +111,7 @@ class OrderController extends Controller
                 'customer_email' => $request->input('customer_email') ?: ($user?->email ?? ''),
                 'customer_phone' => $request->input('customer_phone'),
                 'shipping_address' => $request->input('address'),
+                'cart_id' => $cart?->cart_id ?: $cartId,
                 'items' => $items,
                 'subtotal' => $subtotal,
                 'shipping_fee' => $shippingFee,
@@ -140,15 +122,16 @@ class OrderController extends Controller
 
             $order = $this->orders->createCheckoutOrder($orderData, $user);
 
-            // Clear cart from database
-            if ($cart) {
-                $cart->items()->delete();
-                $cart->delete();
-            }
-            
-            // If user is logged in, double check and clear any other carts
-            if ($user) {
-                \App\Models\Cart::where('user_id', $user->id)->delete();
+            if (!in_array(strtolower($paymentMethod), ['momo', 'qr'], true)) {
+                // Clear carts immediately only for payment methods that complete in this request.
+                if ($cart) {
+                    $cart->items()->delete();
+                    $cart->delete();
+                }
+
+                if ($user) {
+                    \App\Models\Cart::where('user_id', $user->id)->delete();
+                }
             }
 
             return $this->createdResponse($order, 'Order placed successfully');

@@ -24,6 +24,14 @@ class VerifyApiOrigin
             return $next($request);
         }
 
+        if ($request->is('api/v1/payment/momo/ipn')) {
+            return $next($request);
+        }
+
+        if ($request->is('api/v1/payment/sepay/webhook')) {
+            return $next($request);
+        }
+
         // 2. Define allowed patterns (normalized to lowercase)
         $allowedOrigins = [
             'teesik.store',

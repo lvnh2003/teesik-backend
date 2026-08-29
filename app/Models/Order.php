@@ -22,6 +22,13 @@ class Order extends Model
         'payment_status',
         'payment_method',
         'transaction_id',
+        'provider',
+        'provider_order_id',
+        'provider_request_id',
+        'provider_transaction_id',
+        'provider_result_code',
+        'provider_payload',
+        'paid_at',
         'items',
         'data',
         'synced_at',
@@ -34,12 +41,24 @@ class Order extends Model
         'grand_total' => 'float',
         'items' => 'array',
         'data' => 'array',
+        'provider_payload' => 'array',
+        'paid_at' => 'datetime',
         'synced_at' => 'datetime',
     ];
 
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function orderItems()
+    {
+        return $this->hasMany(OrderItem::class);
+    }
+
+    public function paymentTransactions()
+    {
+        return $this->hasMany(PaymentTransaction::class);
     }
 
     public function toApiArray(): array
@@ -61,6 +80,12 @@ class Order extends Model
             'payment_status' => $this->payment_status,
             'payment_method' => $this->payment_method,
             'transaction_id' => $this->transaction_id,
+            'provider' => $this->provider,
+            'provider_order_id' => $this->provider_order_id,
+            'provider_request_id' => $this->provider_request_id,
+            'provider_transaction_id' => $this->provider_transaction_id,
+            'provider_result_code' => $this->provider_result_code,
+            'paid_at' => $this->paid_at?->toISOString(),
             'created_at' => $this->created_at?->toISOString(),
             'updated_at' => $this->updated_at?->toISOString(),
             'items' => $this->items ?? [],

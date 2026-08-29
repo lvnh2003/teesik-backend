@@ -63,6 +63,10 @@ Route::prefix('v1')->group(function () {
     Route::post('/checkout', [OrderController::class, 'checkout']);
     Route::middleware('auth:api')->get('/orders/user', [OrderController::class, 'userOrders']);
     Route::post('/payment/process', [PaymentController::class, 'process']);
+    Route::post('/payment/status', [PaymentController::class, 'status']);
+    Route::post('/payment/momo/ipn', [PaymentController::class, 'momoIpn']);
+    Route::get('/payment/momo/return', [PaymentController::class, 'momoReturn']);
+    Route::post('/payment/sepay/webhook', [PaymentController::class, 'sepayWebhook']);
 
     // Wishlist & Voucher
     Route::middleware('auth:api')->get('/wishlists', [\App\Http\Controllers\WishlistController::class, 'index']);

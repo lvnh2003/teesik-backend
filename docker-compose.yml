@@ -6,7 +6,7 @@ services:
         container_name: teesik-app
         restart: unless-stopped
         ports:
-            - "8000:80" # Trỏ cổng 8000 của host vào cổng 80 của Apache
+            - "8080:80" # Trỏ cổng 8080 của host vào cổng 80 của Apache
             - "5173:5173" # Dành cho Vite server nếu đang phát triển React/Vue
         volumes:
             - .:/var/www/html
@@ -18,6 +18,19 @@ services:
             DB_DATABASE: ${DB_DATABASE:-teesik}
             DB_USERNAME: ${DB_USERNAME:-root}
             DB_PASSWORD: ${DB_PASSWORD:-root}
+            MOMO_ENV: ${MOMO_ENV:-sandbox}
+            MOMO_PARTNER_CODE: ${MOMO_PARTNER_CODE:-}
+            MOMO_ACCESS_KEY: ${MOMO_ACCESS_KEY:-}
+            MOMO_SECRET_KEY: ${MOMO_SECRET_KEY:-}
+            MOMO_ENDPOINT: ${MOMO_ENDPOINT:-https://test-payment.momo.vn/v2/gateway/api/create}
+            MOMO_REDIRECT_URL: ${MOMO_REDIRECT_URL:-http://localhost:3000/checkout}
+            MOMO_IPN_URL: ${MOMO_IPN_URL:-http://localhost:8080/api/v1/payment/momo/ipn}
+            SEPAY_WEBHOOK_SECRET: ${SEPAY_WEBHOOK_SECRET:-}
+            SEPAY_WEBHOOK_AUTH_METHOD: ${SEPAY_WEBHOOK_AUTH_METHOD:-hmac}
+            QR_PAYMENT_CODE_PREFIX: ${QR_PAYMENT_CODE_PREFIX:-TEESIK}
+            QR_BANK_BIN: ${QR_BANK_BIN:-970436}
+            QR_BANK_ACCOUNT_NUMBER: ${QR_BANK_ACCOUNT_NUMBER:-0987654321}
+            QR_BANK_ACCOUNT_NAME: ${QR_BANK_ACCOUNT_NAME:-TEESIK STORE}
             # Redis nếu cần
             # REDIS_HOST: redis
         depends_on:
@@ -28,7 +41,7 @@ services:
         container_name: teesik-db
         restart: unless-stopped
         ports:
-            - "3306:3306"
+            - "3307:3306"
         environment:
             MYSQL_DATABASE: ${DB_DATABASE:-teesik}
             MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-root}
